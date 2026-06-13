@@ -9,7 +9,7 @@
 // ============================================================================
 
 const DB_NAME = 'summer-quest';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let _db = null;
 
 function openDB() {
@@ -31,6 +31,14 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains('meta')) {
         db.createObjectStore('meta', { keyPath: 'key' });
+      }
+      // v2: custom user-created gym exercises (shared) + saved programs.
+      if (!db.objectStoreNames.contains('customExercises')) {
+        db.createObjectStore('customExercises', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('programs')) {
+        const s = db.createObjectStore('programs', { keyPath: 'id' });
+        s.createIndex('profileId', 'profileId', { unique: false });
       }
     };
     req.onsuccess = () => { _db = req.result; resolve(_db); };

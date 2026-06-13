@@ -12,6 +12,8 @@ const state = {
   activeId: null,
   quests: [],
   logs: [],
+  customExercises: [],
+  programs: [],
   ready: false,
 };
 
@@ -27,15 +29,40 @@ export async function init() {
   state.activeId = await db.getMeta('activeProfileId', null);
   if (state.activeId && !state.profiles.find(p => p.id === state.activeId)) state.activeId = null;
   if (!state.activeId && state.profiles.length) state.activeId = state.profiles[0].id;
+  state.customExercises = await db.getAll('customExercises');
   await loadHistory();
   state.ready = true;
   emit();
 }
 
 async function loadHistory() {
-  if (!state.activeId) { state.quests = []; state.logs = []; return; }
+  if (!state.activeId) { state.quests = []; state.logs = []; state.programs = []; return; }
   state.quests = await db.getAllByProfile('quests', state.activeId);
   state.logs = await db.getAllByProfile('logs', state.activeId);
+  state.programs = await db.getAllByProfile('programs', state.activeId);
+}
+
+// ---- custom exercises & programs ------------------------------------------
+export async function addCustomExercise(ex) {
+  const record = { id: db.uid(), custom: true, ...ex };
+  await db.put('customExercises', record);
+  state.customExercises.push(record);
+  emit();
+  return record;
+}
+
+export async function saveProgram(name, exercises) {
+  const record = { id: db.uid(), profileId: state.activeId, name, exercises, createdAt: new Date().toISOString() };
+  await db.put('programs', record);
+  state.programs.push(record);
+  emit();
+  return record;
+}
+
+export async function deleteProgram(id) {
+  await db.del('programs', id);
+  state.programs = state.programs.filter(p => p.id !== id);
+  emit();
 }
 
 // ---- profiles --------------------------------------------------------------

@@ -31,7 +31,10 @@ Completed quests and logged activities are the **source of truth**. Everything e
 
 - **Recovery engine** (`js/engine.js`) — every exercise/activity adds *fatigue load* to the 10 tracked muscle groups; fatigue decays exponentially (≈30 h half-life). A hard swim raises shoulder/back fatigue; volleyball raises shoulders/calves/conditioning.
 - **Effective-rep volume** — rolling 7/30-day reps-per-muscle ledger (swimming contributes partial *pull* volume).
-- **Quest generator** — scores each muscle group by *freshness × under-training*, penalises sore groups, maps the winners to exercise categories, picks the variation matching your level + equipment, and writes a reason citing real numbers (e.g. *"…you've logged 107 effective reps for your back but only 2 for your calves…"*).
+- **Quest generator** — scores each muscle group by *freshness × under-training*, penalises sore groups, maps the winners to exercise categories, picks the variation matching your level + equipment, and writes a reason citing real numbers (e.g. *"…you've logged 107 effective reps for your back but only 2 for your calves…"*). Quests are multi-round circuits so the time estimate matches the tier (micro 2–5 / standard 5–10 / challenge 10–20 min).
+
+### Gym sessions
+Log a full gym session (session builder) and save it as a reusable **program**. XP is **effort-driven, not weight-driven**: `XP = effort × how-much-muscle-it-recruits × volume`, calibrated so a hard ~1 hr session ≈ 100 XP. Your per-set effort rating (Easy → All-out) also scales how much the session fatigues each muscle, so it personalises upcoming quests. Weight is logged for your own progression tracking but doesn't inflate XP. Missing an exercise? Create a **custom one** in-app (tag its muscles) and it's saved for next time. Every exercise has a written **how-to** (setup, tempo, common mistakes) on tap.
 
 ## Project layout
 

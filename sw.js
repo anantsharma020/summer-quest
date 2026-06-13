@@ -1,10 +1,10 @@
 // Service worker: cache the app shell for offline use.
-const CACHE = 'summer-quest-v3';
+const CACHE = 'summer-quest-v4';
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.webmanifest',
   './icon.svg', './icon-maskable.svg',
   './js/main.js', './js/ui.js', './js/ui-svg.js', './js/state.js',
-  './js/engine.js', './js/db.js', './js/data.js',
+  './js/engine.js', './js/db.js', './js/data.js', './js/howto.js',
 ];
 
 self.addEventListener('install', (e) => {

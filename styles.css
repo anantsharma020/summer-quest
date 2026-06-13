@@ -204,6 +204,48 @@ body {
 .gym-row .field { min-width: 0; }
 .gym-row .field input { width: 100%; min-width: 0; }
 .muted-note { color: var(--muted); font-size: 13px; font-weight: 600; }
+
+/* effort pills + custom unit pills */
+.effort-row { display: flex; gap: 7px; }
+.effort-pill { flex: 1; background: var(--bg2); border: 1px solid var(--line); border-radius: 11px; color: var(--fg); font: inherit; font-size: 13px; font-weight: 700; padding: 10px 4px; cursor: pointer; }
+.effort-pill.on { border-color: var(--accent); background: rgba(255,177,60,.14); }
+.link-btn { background: none; border: none; color: var(--accent); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px; text-align: center; }
+
+/* session builder */
+.prog-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.prog-chip { background: var(--card2); border: 1px solid var(--line); border-radius: 999px; color: var(--fg); font: inherit; font-size: 14px; font-weight: 700; padding: 8px 14px; cursor: pointer; }
+.prog-chip span { color: var(--accent); margin-left: 4px; }
+.sess-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.sess-row:last-of-type { border-bottom: none; }
+.sess-body { flex: 1; min-width: 0; }
+.sess-name { font-weight: 700; font-size: 15px; }
+.sess-meta { color: var(--muted); font-size: 13px; }
+.sess-xp { color: var(--accent); font-weight: 800; }
+.sess-x { background: none; border: none; color: var(--muted); font-size: 16px; cursor: pointer; padding: 4px 2px; }
+.sess-total { text-align: right; padding-top: 12px; font-size: 15px; color: var(--muted); }
+.sess-total strong { color: var(--accent); font-size: 17px; }
+
+/* custom exercise creator */
+.custom-form { border-top: 1px dashed var(--line); margin-top: 6px; padding-top: 14px; display: flex; flex-direction: column; gap: 14px; }
+.muscle-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.mtag { background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; color: var(--muted); font: inherit; font-size: 12px; font-weight: 700; padding: 9px 4px; cursor: pointer; }
+.mtag.primary { background: rgba(255,77,86,.18); color: #ff7a82; border-color: rgba(255,77,86,.4); }
+.mtag.secondary { background: rgba(255,159,64,.18); color: #ffb872; border-color: rgba(255,159,64,.4); }
+
+/* quest rounds + tappable name */
+.rounds-banner { margin-top: 10px; background: rgba(77,171,247,.12); border: 1px solid rgba(77,171,247,.28); border-radius: 12px; padding: 10px 12px; font-size: 14px; color: #9ccbf5; }
+.ex-name { display: inline-block; text-decoration: none; color: var(--fg); }
+.ex-info { color: var(--accent); font-size: 13px; }
+.per-round { color: var(--muted); font-size: 12px; font-weight: 600; }
+
+/* how-to block */
+.howto { display: flex; flex-direction: column; gap: 12px; }
+.tempo-badge { align-self: flex-start; background: rgba(47,191,113,.15); color: var(--green); border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 700; }
+.steps { margin: 0; padding-left: 20px; }
+.steps li { font-size: 14px; line-height: 1.5; margin-bottom: 8px; color: #dbe6f6; }
+.avoid-title { font-size: 13px; font-weight: 700; color: var(--red); text-transform: uppercase; letter-spacing: .04em; }
+.avoid { margin: 0; padding-left: 20px; }
+.avoid li { font-size: 13px; line-height: 1.45; margin-bottom: 6px; color: #c9b3b3; }
 .xp-preview { text-align: center; font-size: 15px; color: var(--muted); }
 .xp-preview strong { color: var(--accent); font-size: 18px; }
 .equip-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

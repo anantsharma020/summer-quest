@@ -295,10 +295,20 @@ export const SPORTS = {
   cycling:      { name: 'Cycling',          icon: '🚴', xpPerMin: 1.2, fatigue: { quads: 0.7, calves: 0.4, glutes: 0.4, conditioning: 0.8 } },
 };
 
+// Perceived-effort levels (RPE). Drive BOTH xp and recovery so the model is
+// personalised to how hard a set actually felt — light weights done hard count.
+export const EFFORT_LEVELS = [
+  { id: 'easy',     label: 'Easy',    short: 'Easy', xp: 0.7,  fatigue: 0.6 },
+  { id: 'moderate', label: 'Moderate', short: 'Mod', xp: 0.85, fatigue: 0.8 },
+  { id: 'hard',     label: 'Hard',    short: 'Hard', xp: 1.0,  fatigue: 1.0 },
+  { id: 'max',      label: 'All-out', short: 'Max', xp: 1.15, fatigue: 1.25 },
+];
+export const effortById = (id) => EFFORT_LEVELS.find(e => e.id === id) || EFFORT_LEVELS[2];
+
 // ---------------------------------------------------------------------------
-// Gym / weighted exercises. Logged with weight + sets x reps. The muscle map
-// is how the engine "understands" what was trained; weight scales the fatigue
-// load so heavy sessions suppress the matching muscles in upcoming quests.
+// Gym / weighted exercises. Logged with weight + sets x reps (or seconds for
+// holds). The muscle map is how the engine "understands" what was trained.
+// `unit`: 'reps' (default) | 'seconds'.
 // ---------------------------------------------------------------------------
 export const GYM_EXERCISES = [
   // chest
@@ -343,7 +353,14 @@ export const GYM_EXERCISES = [
   // core
   { id: 'cable_crunch',     name: 'Cable Crunch',            muscles: { core: 1.0 } },
   { id: 'hanging_leg_raise',name: 'Hanging Leg Raise',       muscles: { core: 1.0 } },
-  { id: 'weighted_plank',   name: 'Weighted Plank',          muscles: { core: 1.0, shoulders: 0.3 } },
+  { id: 'crunches',         name: 'Crunches',                muscles: { core: 1.0 } },
+  { id: 'crunch_hold',      name: 'Crunch Hold',             muscles: { core: 1.0 }, unit: 'seconds' },
+  { id: 'weighted_plank',   name: 'Weighted Plank',          muscles: { core: 1.0, shoulders: 0.3 }, unit: 'seconds' },
+  // compound / program staples
+  { id: 'chinup_negative',  name: 'Chinup Negative',         muscles: { back: 1.0, biceps: 0.7, shoulders: 0.3, core: 0.3 } },
+  { id: 'ghd_back_ext',     name: 'GHD Back Extension',      muscles: { back: 0.6, glutes: 0.7, hamstrings: 0.7, core: 0.4 } },
+  { id: 'ffe_split_squat',  name: 'Front-Foot-Elevated Split Squat', muscles: { quads: 1.0, glutes: 0.8, hamstrings: 0.5, calves: 0.3, core: 0.3 } },
+  { id: 'single_arm_cable_row', name: 'Single-Arm Cable Row', muscles: { back: 1.0, biceps: 0.6, shoulders: 0.3, core: 0.3 } },
 ];
 
 export const gymExerciseById = id => GYM_EXERCISES.find(e => e.id === id);

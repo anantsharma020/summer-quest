@@ -9,7 +9,7 @@
 
 import {
   MUSCLE_IDS, CATEGORIES, EXERCISES, CHAINS, exerciseById,
-  ACTIVITY_TYPES, SPORTS, muscleName, gymExerciseById,
+  ACTIVITY_TYPES, SPORTS, muscleName, effortById,
 } from './data.js';
 
 const HOUR = 3600 * 1000;
@@ -17,15 +17,37 @@ const FATIGUE_HALF_LIFE_H = 30;      // muscle fatigue half-life in hours
 const QUEST_FATIGUE_K = 2.2;         // load per unit of quest volume
 const ACTIVITY_FATIGUE_K = 1.4;      // load per (weight x minute) of activity
 const GYM_FATIGUE_K = 2.0;           // load per (rep x muscle-weight) of gym work
+const GYM_XP_K = 2.75;               // calibrated so a hard ~1hr session ≈ 100 XP
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-// Heavier weight => more fatigue. Bounded 0.8x (light/bodyweight) .. 1.6x (heavy).
-const gymLoadMult = (weight) => 0.8 + 0.4 * Math.max(0, Math.min(2, (weight || 0) / 20));
+// How much total muscle an exercise recruits (proxy for how taxing a set is):
+// a deadlift recruits far more than a curl, so it earns more per set.
+const recruitment = (muscles) =>
+  Math.min(3.5, Object.entries(muscles || {})
+    .filter(([m]) => MUSCLE_IDS.includes(m))
+    .reduce((s, [, w]) => s + w, 0));
 
-// XP for a gym set block, comparable to a solid quest/activity. Clamped 20..90.
-export function gymXp(sets, reps, weight) {
-  const base = (sets || 0) * (reps || 0) * 0.9 + (weight ? Math.min(weight, 40) * 0.2 : 0);
-  return Math.max(20, Math.min(90, Math.round(base)));
+// Volume of one set, normalised toward bodyweight reps (holds: seconds/5).
+const setVolume = (entry) =>
+  entry.unit === 'seconds' ? (entry.seconds || 0) / 5 : (entry.reps || 0);
+
+// XP for one gym entry: effort × recruitment × volume, weight-independent.
+export function gymEntryXp(entry) {
+  const R = recruitment(entry.muscles);
+  const eff = effortById(entry.effort).xp;
+  const repF = entry.unit === 'seconds'
+    ? clamp((entry.seconds || 0) / 45, 0.6, 1.6)
+    : clamp((entry.reps || 0) / 10, 0.6, 1.6);
+  return Math.max(3, Math.round(GYM_XP_K * (entry.sets || 0) * R * eff * repF));
 }
+
+export const gymSessionXp = (entries) =>
+  (entries || []).reduce((s, e) => s + gymEntryXp(e), 0);
+
+// Rough duration estimate for a logged gym session (for weekly-minutes stats).
+export const gymSessionMinutes = (entries) =>
+  Math.max(1, Math.round((entries || []).reduce((s, e) =>
+    s + (e.sets || 0) * (e.unit === 'seconds' ? (e.seconds || 0) / 60 + 0.5 : (e.reps || 0) * 0.05 + 0.75), 0)));
 
 // --------------------------------------------------------------------------
 // Date helpers (local time).
@@ -71,16 +93,16 @@ export function effortEvents(quests, logs) {
     const time = new Date(l.createdAt).getTime();
     const fatigue = {}, reps = {};
 
-    // Gym lifts: total reps x muscle weight, scaled by how heavy the load was.
+    // Gym session: each entry contributes effective reps + effort-scaled
+    // fatigue per muscle. Effort (not weight) drives how taxing it was.
     if (l.kind === 'gym') {
-      const gx = gymExerciseById(l.gymId);
-      if (gx) {
-        const totalReps = (l.sets || 0) * (l.reps || 0);
-        const mult = gymLoadMult(l.weight);
-        for (const [m, w] of Object.entries(gx.muscles)) {
+      for (const e of (l.entries || [])) {
+        const base = (e.sets || 0) * setVolume(e);
+        const effMult = effortById(e.effort).fatigue;
+        for (const [m, w] of Object.entries(e.muscles || {})) {
           if (!MUSCLE_IDS.includes(m)) continue;
-          reps[m] = (reps[m] || 0) + totalReps * w;
-          fatigue[m] = (fatigue[m] || 0) + totalReps * w * GYM_FATIGUE_K * mult;
+          reps[m] = (reps[m] || 0) + base * w;
+          fatigue[m] = (fatigue[m] || 0) + base * w * GYM_FATIGUE_K * effMult;
         }
       }
       events.push({ time, fatigue, reps, source: 'activity', log: l });
@@ -190,9 +212,9 @@ export function currentStreak(quests, logs) {
 // Quest generation.
 // --------------------------------------------------------------------------
 const TIERS = {
-  micro:     { name: 'Micro Quest',     slots: 2, volMult: 0.7, time: '2–5 min' },
-  standard:  { name: 'Standard Quest',  slots: 3, volMult: 1.0, time: '5–10 min' },
-  challenge: { name: 'Challenge Quest', slots: 4, volMult: 1.5, time: '10–20 min' },
+  micro:     { name: 'Micro Quest',     slots: 2, rounds: 1, volMult: 0.8, time: '2–5 min' },
+  standard:  { name: 'Standard Quest',  slots: 3, rounds: 2, volMult: 1.0, time: '5–10 min' },
+  challenge: { name: 'Challenge Quest', slots: 4, rounds: 3, volMult: 1.3, time: '10–20 min' },
 };
 
 // Average fatigue of a category's primary muscles.
@@ -245,15 +267,15 @@ function prescribe(ex, tier, profile) {
   return { exerciseId: ex.id, unit: ex.unit, amount };
 }
 
-function estMinutes(items) {
+function estMinutes(items, rounds = 1) {
   let secs = 0;
   for (const it of items) {
     const ex = exerciseById(it.exerciseId);
-    if (ex.unit === 'seconds') secs += it.amount + 25;
-    else if (ex.unit === 'reps_each') secs += it.amount * 2 * 3 + 25;
-    else secs += it.amount * 3 + 25;
+    if (ex.unit === 'seconds') secs += it.amount + 20;
+    else if (ex.unit === 'reps_each') secs += it.amount * 2 * 3 + 20;
+    else secs += it.amount * 3 + 20;
   }
-  return Math.max(2, Math.round(secs / 60));
+  return Math.max(2, Math.round(secs * rounds / 60));
 }
 
 // Subject-verb agreement: most muscle names are plural ("shoulders are"),
@@ -267,8 +289,12 @@ function buildReason(focusMuscles, fatigue, volume, events, now) {
   // Recent (last 40h) activities that drove fatigue.
   const recentActs = events
     .filter(e => e.source === 'activity' && (now - e.time) < 40 * HOUR && e.log)
+    .sort((a, b) => b.time - a.time)   // most recent first
     .map(e => e.log);
-  const actNames = [...new Set(recentActs.map(l => l.label.toLowerCase()))];
+  const actLabel = (l) => l.kind === 'gym'
+    ? (l.name && !/session|workout|gym/i.test(l.name) ? l.name.toLowerCase() : 'gym')
+    : l.label.toLowerCase();
+  const actNames = [...new Set(recentActs.map(actLabel))];
 
   // Most-fatigued muscle group right now.
   const sorted = [...MUSCLE_IDS].sort((a, b) => fatigue[b] - fatigue[a]);
@@ -365,11 +391,13 @@ export function generateQuest(profile, quests, logs, tier = 'standard', now = Da
   if (!focusMuscles.length) focusMuscles = targets.filter(t => fatigue[t] < 75).slice(0, 2);
   const reason = buildReason(focusMuscles, fatigue, volume, events, now);
 
+  const rounds = TIERS[tier].rounds;
   return {
     tier,
     tierName: TIERS[tier].name,
     estTime: TIERS[tier].time,
-    estMinutes: estMinutes(items),
+    rounds,
+    estMinutes: estMinutes(items, rounds),
     xp: QUEST_XP[tier],
     exercises: items,
     reason,

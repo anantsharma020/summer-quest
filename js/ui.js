@@ -7,19 +7,52 @@ import * as S from './state.js';
 import {
   EXERCISES, CATEGORIES, SPORTS, ACTIVITY_TYPES, EQUIPMENT_OPTIONS,
   GOAL_OPTIONS, LOCATION_OPTIONS, MUSCLES, MUSCLE_IDS, exerciseById,
-  muscleName, GYM_EXERCISES, gymExerciseByName,
+  muscleName, GYM_EXERCISES, EFFORT_LEVELS, effortById,
 } from './data.js';
 import {
   generateQuest, effortEvents, currentFatigue, volumeWindow, xpForDay,
-  currentStreak, dayRating, activityXp, gymXp, dayKey, QUEST_XP,
+  currentStreak, dayRating, activityXp, gymEntryXp, gymSessionXp,
+  gymSessionMinutes, dayKey, QUEST_XP,
 } from './engine.js';
 import { bodyMap, muscleHighlight, demoSVG } from './ui-svg.js';
+import { HOWTO } from './howto.js';
+
+// Merged gym catalog (built-in + user custom) and a name resolver.
+const gymCatalog = () => [...GYM_EXERCISES, ...S.get().customExercises];
+const gymResolve = (str) => {
+  if (!str) return null;
+  const s = str.trim().toLowerCase();
+  if (!s) return null;
+  const list = gymCatalog();
+  return list.find(e => e.name.toLowerCase() === s)
+    || list.find(e => e.name.toLowerCase().includes(s))
+    || list.find(e => s.includes(e.name.toLowerCase())) || null;
+};
 
 const app = () => document.getElementById('app');
 const nav = () => document.getElementById('nav');
 
 // Ephemeral UI state (not persisted).
-const ui = { selectedTier: 'standard', logType: 'swim', sport: 'volleyball', creatingProfile: false };
+const ui = {
+  selectedTier: 'standard', logType: 'swim', sport: 'volleyball', creatingProfile: false,
+  // gym session builder
+  session: [], sessionName: '', gymEffort: 'hard', customUnit: 'reps',
+  customOpen: false, customMuscles: {},
+};
+
+// Build a gym session entry from the add-form inputs / a catalog exercise.
+function buildEntry(gx, weight, sets, amt, effort) {
+  const unit = gx.unit || 'reps';
+  return {
+    ref: gx.id, name: gx.name, muscles: gx.muscles, unit,
+    sets: Math.max(1, sets || 0),
+    reps: unit === 'reps' ? Math.max(1, amt || 0) : undefined,
+    seconds: unit === 'seconds' ? Math.max(1, amt || 0) : undefined,
+    weight: weight || 0, effort,
+  };
+}
+const gymEntryMeta = (e) =>
+  `${e.sets}×${e.unit === 'seconds' ? e.seconds + 's' : e.reps}${e.weight ? ` · ${e.weight}kg` : ''} · ${effortById(e.effort).label}`;
 
 // Quick-log shortcuts shown on the home screen (short labels for the grid).
 const QUICK_LOG = [
@@ -189,9 +222,13 @@ function recentFeed(n) {
   const items = [];
   for (const q of quests) if (q.status === 'completed' && q.completedAt) items.push({ t: q.completedAt, icon: '⚡', title: `${q.tierName}`, sub: q.exercises.map(e => exerciseById(e.exerciseId)?.name).slice(0, 2).join(', '), xp: QUEST_XP[q.tier] });
   for (const l of logs) {
-    const sub = l.kind === 'gym'
-      ? `${l.sets}×${l.reps}${l.weight ? ` · ${l.weight}kg` : ''}`
-      : `${l.minutes} min${l.distance ? ` · ${l.distance}${l.metric === 'swim_m' ? ' m' : ' km'}` : ''}`;
+    let sub;
+    if (l.kind === 'gym') {
+      const es = l.entries || [];
+      sub = `${es.length} exercise${es.length === 1 ? '' : 's'} · ${es.reduce((s, e) => s + (e.sets || 0), 0)} sets`;
+    } else {
+      sub = `${l.minutes} min${l.distance ? ` · ${l.distance}${l.metric === 'swim_m' ? ' m' : ' km'}` : ''}`;
+    }
     items.push({ t: l.createdAt, icon: l.icon || '🏅', title: l.label, sub, xp: l.xp });
   }
   items.sort((a, b) => new Date(b.t) - new Date(a.t));
@@ -219,6 +256,7 @@ function screenQuest() {
   <div class="card quest-head">
     <div class="qh-row"><span class="qh-time">⏱ ${q.estMinutes} min</span><span class="qh-xp">+${q.xp} XP</span></div>
     <div class="reason">💡 ${esc(q.reason)}</div>
+    ${q.rounds > 1 ? `<div class="rounds-banner">🔁 Complete the whole circuit <strong>${q.rounds} times</strong></div>` : ''}
   </div>
   ${q.exercises.map((it, i) => {
     const ex = exerciseById(it.exerciseId);
@@ -226,8 +264,8 @@ function screenQuest() {
       <div class="ex-top">
         <div class="ex-demo">${demoSVG(ex.pattern)}</div>
         <div class="ex-headinfo">
-          <div class="ex-name">${i + 1}. ${esc(ex.name)}</div>
-          <div class="ex-amount">${formatAmount(ex.unit, it.amount)}</div>
+          <a class="ex-name" href="#/exercise/${ex.id}?from=quest">${i + 1}. ${esc(ex.name)} <span class="ex-info">ⓘ</span></a>
+          <div class="ex-amount">${formatAmount(ex.unit, it.amount)}${q.rounds > 1 ? ' <span class="per-round">per round</span>' : ''}</div>
           <div class="chips">${muscleChips(ex.muscles)}</div>
         </div>
       </div>
@@ -244,6 +282,68 @@ function screenQuest() {
   `;
 }
 
+function customExerciseForm() {
+  return `<div class="custom-form">
+    <label class="field"><span>New exercise name</span><input id="custom-name" type="text" maxlength="40" placeholder="e.g. Pec Deck Fly"></label>
+    <div class="field"><span>Muscles worked — tap to cycle: off → primary → secondary</span>
+      <div class="muscle-grid">${MUSCLE_IDS.map(m => `<button type="button" class="mtag ${ui.customMuscles[m] || ''}" data-action="cycle-muscle" data-m="${m}">${muscleName(m)}</button>`).join('')}</div>
+    </div>
+    <div class="field"><span>Measured in</span>
+      <div class="effort-row">${['reps', 'seconds'].map(u => `<button type="button" class="effort-pill ${ui.customUnit === u ? 'on' : ''}" data-action="set-custom-unit" data-u="${u}">${u === 'reps' ? 'Reps' : 'Seconds (hold)'}</button>`).join('')}</div>
+    </div>
+    <button class="btn-primary" data-action="create-custom">Create exercise</button>
+  </div>`;
+}
+
+function screenGym(typeTabs) {
+  const programs = S.get().programs;
+  const entries = ui.session;
+  const total = gymSessionXp(entries);
+  return `
+  <header class="topbar"><a class="back" href="#/home">←</a><div class="pname">Gym Session</div></header>
+  <div class="logtabs">${typeTabs}</div>
+
+  ${programs.length ? `<div class="section-title">Your programs</div>
+    <div class="prog-chips">${programs.map(p => `<button class="prog-chip" data-action="load-program" data-id="${p.id}">${esc(p.name)} <span>${p.exercises.length}</span></button>`).join('')}</div>` : ''}
+
+  <div class="section-title">${ui.sessionName ? esc(ui.sessionName) : 'Session'}</div>
+  <div class="card">
+    ${entries.length ? entries.map((e, i) => `
+      <div class="sess-row">
+        <div class="sess-body"><div class="sess-name">${esc(e.name)}</div><div class="sess-meta">${gymEntryMeta(e)}</div></div>
+        <div class="sess-xp">+${gymEntryXp(e)}</div>
+        <button class="sess-x" data-action="remove-entry" data-i="${i}">✕</button>
+      </div>`).join('') : '<div class="muted-note">No exercises yet — add your first below.</div>'}
+    ${entries.length ? `<div class="sess-total">Total <strong>+${total} XP</strong></div>` : ''}
+  </div>
+
+  <div class="section-title">Add exercise</div>
+  <div class="card log-form">
+    <label class="field"><span>Exercise</span>
+      <input id="gym-name" list="gym-list" placeholder="e.g. Dumbbell Chest Press" autocomplete="off" data-live>
+      <datalist id="gym-list">${gymCatalog().map(g => `<option value="${esc(g.name)}"></option>`).join('')}</datalist>
+    </label>
+    <div class="field"><span>Detected muscles</span><div class="chips" id="gym-muscles"><span class="muted-note">Start typing and pick an exercise…</span></div></div>
+    <div class="gym-row">
+      <label class="field"><span>Weight (kg)</span><input id="gym-weight" type="number" min="0" step="0.5" placeholder="opt." data-live></label>
+      <label class="field"><span>Sets</span><input id="gym-sets" type="number" min="1" step="1" value="3" data-live></label>
+      <label class="field"><span id="gym-amt-label">Reps</span><input id="gym-amt" type="number" min="1" step="1" value="10" data-live></label>
+    </div>
+    <div class="field"><span>Effort</span>
+      <div class="effort-row" id="effort-row">${EFFORT_LEVELS.map(l => `<button type="button" class="effort-pill ${ui.gymEffort === l.id ? 'on' : ''}" data-action="set-effort" data-effort="${l.id}">${l.label}</button>`).join('')}</div>
+    </div>
+    <div class="xp-preview">This exercise: <strong id="xp-preview">+0</strong> XP</div>
+    <button class="btn-primary big" data-action="add-entry">＋ Add to session</button>
+    <button class="link-btn" data-action="toggle-custom">${ui.customOpen ? 'Cancel custom exercise' : "Can't find it? Create a custom exercise"}</button>
+    ${ui.customOpen ? customExerciseForm() : ''}
+  </div>
+
+  ${entries.length ? `<div class="quest-actions">
+    <button class="btn-ghost" data-action="save-program">★ Save as program</button>
+    <button class="btn-primary big" data-action="log-session">Log session (+${total} XP)</button>
+  </div>` : ''}`;
+}
+
 function screenLog() {
   const params = new URLSearchParams((location.hash.split('?')[1] || ''));
   if (params.get('type')) ui.logType = params.get('type');
@@ -257,26 +357,7 @@ function screenLog() {
     return `<button class="logtab ${type === t ? 'on' : ''}" data-action="set-log-type" data-type="${t}"><span>${m.icon}</span>${m.name}</button>`;
   }).join('');
 
-  // Gym lift logging — searchable exercise, weight, sets x reps, live muscle detection.
-  if (isGym) {
-    return `
-    <header class="topbar"><a class="back" href="#/home">←</a><div class="pname">Log Gym Exercise</div></header>
-    <div class="logtabs">${typeTabs}</div>
-    <div class="card log-form">
-      <label class="field"><span>Exercise</span>
-        <input id="gym-name" list="gym-list" placeholder="e.g. Dumbbell Chest Press" autocomplete="off" data-live>
-        <datalist id="gym-list">${GYM_EXERCISES.map(g => `<option value="${esc(g.name)}"></option>`).join('')}</datalist>
-      </label>
-      <div class="field"><span>Detected muscles</span><div class="chips" id="gym-muscles"><span class="muted-note">Start typing and pick an exercise…</span></div></div>
-      <div class="gym-row">
-        <label class="field"><span>Weight/side (kg)</span><input id="gym-weight" type="number" min="0" step="0.5" placeholder="opt." data-live></label>
-        <label class="field"><span>Sets</span><input id="gym-sets" type="number" min="1" step="1" value="3" data-live></label>
-        <label class="field"><span>Reps</span><input id="gym-reps" type="number" min="1" step="1" value="10" data-live></label>
-      </div>
-      <div class="xp-preview">Earns <strong id="xp-preview">+0</strong> XP</div>
-      <button class="btn-primary big" data-action="save-log">Save Exercise</button>
-    </div>`;
-  }
+  if (isGym) return screenGym(typeTabs);
 
   let fields = '';
   if (isSport) {
@@ -386,8 +467,10 @@ function screenExercise(id) {
   const ex = exerciseById(id);
   if (!ex) return `<div class="empty">Exercise not found.</div>`;
   const chain = ex.chain ? EXERCISES.filter(e => e.chain === ex.chain).sort((a, b) => a.level - b.level) : [];
+  const h = HOWTO[ex.id];
+  const back = location.hash.includes('from=quest') ? '#/quest' : '#/library';
   return `
-  <header class="topbar"><a class="back" href="#/library">←</a><div class="pname">${esc(ex.name)}</div></header>
+  <header class="topbar"><a class="back" href="${back}">←</a><div class="pname">${esc(ex.name)}</div></header>
   <div class="card ex-detail">
     <div class="ex-demo big">${demoSVG(ex.pattern)}</div>
     <div class="chips center">${muscleChips(ex.muscles)}</div>
@@ -395,6 +478,12 @@ function screenExercise(id) {
     <div class="legend"><span class="chip chip-prim">Primary</span><span class="chip chip-sec">Secondary</span></div>
     <ul class="cues">${ex.cues.map(c => `<li>${esc(c)}</li>`).join('')}</ul>
   </div>
+  ${h ? `<div class="section-title">How to perform</div>
+  <div class="card howto">
+    ${h.tempo ? `<div class="tempo-badge">Tempo · ${esc(h.tempo)}</div>` : ''}
+    <ol class="steps">${h.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+    ${h.avoid && h.avoid.length ? `<div class="avoid-title">⚠ Common mistakes</div><ul class="avoid">${h.avoid.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
+  </div>` : ''}
   ${chain.length > 1 ? `<div class="section-title">Progression</div>
     <div class="card chain">${chain.map(c => `<div class="chain-step ${c.id === ex.id ? 'on' : ''}">${c.id === ex.id ? '▸ ' : ''}${esc(c.name)}</div>`).join('<div class="chain-arrow">↓</div>')}</div>` : ''}
   `;
@@ -462,7 +551,7 @@ export function render() {
   else if (r.startsWith('/log')) html = screenLog();
   else if (r.startsWith('/stats')) html = screenStats();
   else if (r.startsWith('/library')) html = screenLibrary();
-  else if (r.startsWith('/exercise/')) html = screenExercise(r.split('/')[2]);
+  else if (r.startsWith('/exercise/')) html = screenExercise(r.split('/')[2].split('?')[0]);
   else if (r.startsWith('/profile')) html = screenProfile();
   else html = screenHome();
 
@@ -474,14 +563,17 @@ export function render() {
 
 function updateLogPreview() {
   if (ui.logType === 'gym') {
-    const gx = gymExerciseByName(document.getElementById('gym-name')?.value);
+    const gx = gymResolve(document.getElementById('gym-name')?.value);
+    const unit = gx ? (gx.unit || 'reps') : 'reps';
+    const lbl = document.getElementById('gym-amt-label');
+    if (lbl) lbl.textContent = unit === 'seconds' ? 'Seconds' : 'Reps';
     const sets = parseInt(document.getElementById('gym-sets')?.value) || 0;
-    const reps = parseInt(document.getElementById('gym-reps')?.value) || 0;
+    const amt = parseInt(document.getElementById('gym-amt')?.value) || 0;
     const weight = parseFloat(document.getElementById('gym-weight')?.value) || 0;
-    const xpEl = document.getElementById('xp-preview');
-    if (xpEl) xpEl.textContent = '+' + (gx ? gymXp(sets, reps, weight) : 0);
     const mEl = document.getElementById('gym-muscles');
     if (mEl) mEl.innerHTML = gx ? muscleChips(gx.muscles) : '<span class="muted-note">Start typing and pick an exercise…</span>';
+    const xpEl = document.getElementById('xp-preview');
+    if (xpEl) xpEl.textContent = '+' + (gx ? gymEntryXp(buildEntry(gx, weight, sets, amt, ui.gymEffort)) : 0);
     return;
   }
   const el = document.getElementById('xp-preview');
@@ -542,6 +634,75 @@ async function onClick(e) {
 
     case 'save-log': await saveLog(); break;
 
+    // ---- gym session builder ----
+    case 'set-effort':
+      ui.gymEffort = t.dataset.effort;
+      document.querySelectorAll('#effort-row .effort-pill').forEach(p => p.classList.toggle('on', p.dataset.effort === ui.gymEffort));
+      updateLogPreview();
+      break;
+    case 'add-entry': {
+      const gx = gymResolve(document.getElementById('gym-name').value);
+      if (!gx) { toast('Pick an exercise from the list, or create a custom one'); break; }
+      const sets = parseInt(document.getElementById('gym-sets').value) || 0;
+      const amt = parseInt(document.getElementById('gym-amt').value) || 0;
+      const weight = parseFloat(document.getElementById('gym-weight').value) || 0;
+      ui.session.push(buildEntry(gx, weight, sets, amt, ui.gymEffort));
+      render();
+      break;
+    }
+    case 'remove-entry': ui.session.splice(parseInt(t.dataset.i), 1); render(); break;
+    case 'toggle-custom': ui.customOpen = !ui.customOpen; render(); break;
+    case 'cycle-muscle': {
+      const m = t.dataset.m, cur = ui.customMuscles[m];
+      const next = cur === undefined ? 'primary' : cur === 'primary' ? 'secondary' : undefined;
+      if (next) ui.customMuscles[m] = next; else delete ui.customMuscles[m];
+      t.className = 'mtag ' + (next || '');
+      break;
+    }
+    case 'set-custom-unit':
+      ui.customUnit = t.dataset.u;
+      document.querySelectorAll('.custom-form .effort-pill').forEach(p => p.classList.toggle('on', p.dataset.u === ui.customUnit));
+      break;
+    case 'create-custom': {
+      const name = document.getElementById('custom-name').value.trim();
+      const muscles = {};
+      for (const [m, st] of Object.entries(ui.customMuscles)) muscles[m] = st === 'primary' ? 1.0 : 0.5;
+      if (!name) { toast('Name your exercise'); break; }
+      if (!Object.keys(muscles).length) { toast('Tap at least one muscle'); break; }
+      const ex = await S.addCustomExercise({ name, muscles, unit: ui.customUnit });
+      ui.customOpen = false; ui.customMuscles = {}; ui.customUnit = 'reps';
+      render();
+      setTimeout(() => { const el = document.getElementById('gym-name'); if (el) { el.value = ex.name; updateLogPreview(); } }, 0);
+      toast(`Added "${ex.name}" to your exercises`);
+      break;
+    }
+    case 'load-program': {
+      const p = S.get().programs.find(x => x.id === t.dataset.id);
+      if (p) { ui.session = p.exercises.map(e => ({ ...e })); ui.sessionName = p.name; render(); }
+      break;
+    }
+    case 'save-program': {
+      if (!ui.session.length) break;
+      const name = (prompt('Name this program', ui.sessionName || 'My Program') || '').trim();
+      if (!name) break;
+      await S.saveProgram(name, ui.session.map(e => ({ ...e })));
+      ui.sessionName = name;
+      toast('Program saved');
+      render();
+      break;
+    }
+    case 'log-session': {
+      if (!ui.session.length) break;
+      const name = ui.sessionName || 'Gym session';
+      const entries = ui.session.map(e => ({ ...e, xp: gymEntryXp(e) }));
+      const xp = gymSessionXp(entries);
+      await S.addLog({ kind: 'gym', subtype: 'session', name, entries, xp, minutes: gymSessionMinutes(entries), icon: '🏋️', label: name, metric: null });
+      ui.session = []; ui.sessionName = '';
+      celebrate(xp, dayRating(xpForDay(S.get().quests, S.get().logs, dayKey())));
+      location.hash = '#/home';
+      break;
+    }
+
     case 'switch-profile': if (t.dataset.id !== S.get().activeId) await S.setActive(t.dataset.id); location.hash = '#/home'; break;
     case 'new-profile': ui.creatingProfile = true; render(); break;
     case 'create-profile': await saveProfile(true); break;
@@ -556,24 +717,6 @@ async function onClick(e) {
 
 async function saveLog() {
   const type = ui.logType, isSport = type === 'sport';
-
-  if (type === 'gym') {
-    const gx = gymExerciseByName(document.getElementById('gym-name').value);
-    if (!gx) { toast('Pick an exercise from the list'); return; }
-    const sets = Math.max(1, parseInt(document.getElementById('gym-sets').value) || 0);
-    const reps = Math.max(1, parseInt(document.getElementById('gym-reps').value) || 0);
-    const weight = parseFloat(document.getElementById('gym-weight').value) || 0;
-    const log = {
-      kind: 'gym', subtype: 'gym', gymId: gx.id, exerciseName: gx.name,
-      sets, reps, weight, minutes: sets * 3, xp: gymXp(sets, reps, weight),
-      label: gx.name, icon: '🏋️', metric: null,
-    };
-    await S.addLog(log);
-    toast(`Logged ${gx.name} · +${log.xp} XP`);
-    location.hash = '#/home';
-    return;
-  }
-
   const mins = Math.max(1, parseInt(document.getElementById('log-minutes').value) || 0);
   let log;
   if (isSport) {
