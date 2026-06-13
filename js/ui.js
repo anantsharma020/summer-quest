@@ -549,6 +549,12 @@ function screenProfile() {
       <button class="btn-primary" data-action="backup-restore">Restore from backup</button>` : ''}
   </div>
 
+  <div class="section-title">Spread the word</div>
+  <a class="card invite-link" href="./pitch.html">
+    <div><div class="invite-title">📣 Invite someone</div><div class="muted-note">Open the shareable invite deck — 9 slides for WhatsApp / Instagram.</div></div>
+    <div class="btn-ghost">Open →</div>
+  </a>
+
   <button class="btn-danger" data-action="delete-profile" data-id="${p.id}">Delete this profile</button>
   `;
 }

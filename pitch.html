@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Summer Quest — Invite Deck</title>
+<style>
+  :root{ --bg:#0a1019; --fg:#eaf1fb; --muted:#8ea2c0; --accent:#ffb13c; --line:#243653; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:radial-gradient(120% 60% at 50% 0%,#16233c,#0a1019 60%);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;min-height:100vh}
+  .wrap{max-width:560px;margin:0 auto;padding:20px 16px 60px}
+  header{text-align:center;padding:14px 8px 18px}
+  header h1{font-size:22px;margin:0 0 6px}
+  header p{color:var(--muted);font-size:14px;margin:0 0 16px;line-height:1.5}
+  .btn{display:inline-flex;align-items:center;gap:8px;justify-content:center;background:linear-gradient(180deg,#ffb13c,#ff8c3c);
+    color:#1a1205;border:none;border-radius:14px;font-weight:800;font-size:15px;padding:13px 20px;cursor:pointer;
+    box-shadow:0 6px 18px rgba(255,140,60,.3);text-decoration:none}
+  .btn.ghost{background:#1d2c49;color:var(--fg);border:1px solid var(--line);box-shadow:none}
+  .btn:active{transform:translateY(1px)}
+  .carousel{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;padding:6px 2px 14px;-webkit-overflow-scrolling:touch}
+  .carousel::-webkit-scrollbar{display:none}
+  .slide{flex:0 0 88%;max-width:480px;scroll-snap-align:center}
+  .slide .frame{border-radius:22px;overflow:hidden;border:1px solid var(--line);box-shadow:0 14px 40px rgba(0,0,0,.45);background:#0a1019}
+  .slide svg{display:block;width:100%;height:auto}
+  .slide .dl{width:100%;margin-top:10px;padding:11px;font-size:13px;font-weight:700}
+  .dots{display:flex;gap:7px;justify-content:center;margin:6px 0 22px}
+  .dot{width:8px;height:8px;border-radius:50%;background:#2a3a57;transition:.2s}
+  .dot.on{background:var(--accent);width:22px;border-radius:4px}
+  .topbtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  .hint{color:var(--muted);font-size:12.5px;text-align:center;margin-top:18px;line-height:1.6}
+  .hint code{background:#16223a;padding:2px 6px;border-radius:6px;color:#cbd8ec}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>☀️ Summer Quest — Invite Deck</h1>
+    <p>Swipe through the 9 slides. Download them as images and share on WhatsApp / Instagram.</p>
+    <div class="topbtns">
+      <button class="btn" id="dlAll">⬇ Download all 9 slides</button>
+      <a class="btn ghost" href="./index.html">Open the app →</a>
+    </div>
+  </header>
+  <div class="carousel" id="carousel"></div>
+  <div class="dots" id="dots"></div>
+  <p class="hint">Tip: on a Mac, “Download all” saves nine <code>.png</code> files (1080×1080). Send them to your phone (AirDrop) or attach them in WhatsApp as a set — they’ll show up like an Instagram carousel.</p>
+</div>
+
+<script>
+const W = 1080;
+const C = { fg:'#eaf1fb', muted:'#9fb1cd', dim:'#7e92b2', accent:'#ffb13c', accent2:'#ff8c3c',
+  blue:'#4dabf7', green:'#2fbf71', red:'#ff4d56', orange:'#ff9f40', pink:'#ff5da2',
+  card:'#16223a', card2:'#1d2c49', line:'#2a3a57' };
+
+function defs(){return `<defs>
+  <radialGradient id="bg" cx="50%" cy="0%" r="120%"><stop offset="0" stop-color="#16233c"/><stop offset="0.5" stop-color="#0e1726"/><stop offset="1" stop-color="#0a1019"/></radialGradient>
+  <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd35c"/><stop offset="1" stop-color="#ff8c3c"/></linearGradient>
+  <linearGradient id="acc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffd35c"/><stop offset="1" stop-color="#ff8c3c"/></linearGradient>
+  <radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ffb13c" stop-opacity="0.30"/><stop offset="1" stop-color="#ffb13c" stop-opacity="0"/></radialGradient>
+</defs>`;}
+
+function rays(cx,cy,r,w){let s='';const n=8;for(let i=0;i<n;i++){const a=Math.PI*2*i/n-Math.PI/2;
+  const x1=cx+Math.cos(a)*(r+24),y1=cy+Math.sin(a)*(r+24),x2=cx+Math.cos(a)*(r+r*0.55+24),y2=cy+Math.sin(a)*(r+r*0.55+24);
+  s+=`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="url(#sun)" stroke-width="${w}" stroke-linecap="round"/>`;}return s;}
+function sun(cx,cy,r){return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#sun)"/>${rays(cx,cy,r,Math.max(7,r*0.13))}`;}
+
+function eyebrow(txt){return `<text x="90" y="150" fill="${C.accent}" font-size="30" font-weight="800" letter-spacing="4">${txt}</text>`;}
+function wordmark(){return `<g opacity="0.85">${sun(118,1002,16)}<text x="150" y="1012" fill="${C.muted}" font-size="26" font-weight="800" letter-spacing="3">SUMMER QUEST</text></g>`;}
+function dots(n){let s='';for(let i=1;i<=9;i++){const on=i===n;const x=720+(i-1)*36;
+  s+=`<rect x="${x}" y="993" width="${on?34:20}" height="14" rx="7" fill="${on?C.accent:'#33486b'}"/>`;}return s;}
+function pill(x,y,w,h,fill,stroke){return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h/2}" fill="${fill}"${stroke?` stroke="${stroke}"`:''}/>`;}
+
+function wrap(inner,n,opts={}){return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,system-ui,sans-serif">
+  ${defs()}<rect width="1080" height="1080" fill="url(#bg)"/>
+  ${inner}${opts.noMark?'':wordmark()}${dots(n)}</svg>`;}
+
+// ---- slides ----------------------------------------------------------------
+const slides = [];
+
+// 1 — cover
+slides.push(wrap(`
+  <circle cx="540" cy="372" r="300" fill="url(#glow)"/>
+  ${sun(540,360,118)}
+  <text x="540" y="606" text-anchor="middle" fill="${C.fg}" font-size="104" font-weight="900" letter-spacing="2">SUMMER QUEST</text>
+  <text x="540" y="690" text-anchor="middle" fill="${C.accent}" font-size="46" font-weight="800">Turn your free days into an adventure.</text>
+  <text x="540" y="770" text-anchor="middle" fill="${C.muted}" font-size="36" font-weight="600">A fitness game for summer, travel &amp; lazy weekends.</text>
+`,1,{noMark:true}));
+
+// 2 — problem
+slides.push(wrap(`
+  ${eyebrow('SOUND FAMILIAR?')}
+  <text x="90" y="300" fill="${C.fg}" font-size="78" font-weight="900">Workouts feel</text>
+  <text x="90" y="392" fill="${C.fg}" font-size="78" font-weight="900">like homework.</text>
+  <g fill="${C.muted}" font-size="44" font-weight="600">
+    <text x="90" y="540">😮‍💨  One brutal session…</text>
+    <text x="90" y="624">🛋️  then days of nothing.</text>
+    <text x="90" y="708">😣  Guilt. “I’ll restart Monday.”</text>
+  </g>
+  <text x="90" y="828" fill="${C.accent}" font-size="40" font-weight="800">There’s a better way to stay active.</text>
+`,2));
+
+// 3 — the idea
+slides.push(wrap(`
+  ${eyebrow('THE IDEA')}
+  <text x="90" y="300" fill="${C.fg}" font-size="80" font-weight="900">What if it felt</text>
+  <text x="90" y="392" fill="${C.fg}" font-size="80" font-weight="900">like a <tspan fill="${C.accent}">game</tspan>?</text>
+  <g transform="translate(90,470)">
+    ${pill(0,0,520,86,'rgba(255,177,60,0.14)','#ffb13c66')}
+    <text x="36" y="56" fill="${C.accent}" font-size="40" font-weight="800">⚡ 2–10 minute quests</text>
+  </g>
+  <text x="90" y="668" fill="${C.muted}" font-size="46" font-weight="600">Move a little, often —</text>
+  <text x="90" y="730" fill="${C.muted}" font-size="46" font-weight="600">whenever you’ve got a moment.</text>
+  <text x="90" y="828" fill="${C.fg}" font-size="42" font-weight="800">No gym. No schedule. No guilt.</text>
+`,3));
+
+// 4 — how it works (mock quest card)
+slides.push(wrap(`
+  ${eyebrow('THE DAILY LOOP')}
+  <g font-size="40" font-weight="700" fill="${C.fg}">
+    <text x="90" y="250">① Tap <tspan fill="${C.accent}">Generate Quest</tspan></text>
+    <text x="90" y="318">② Do a quick challenge</text>
+    <text x="90" y="386">③ Earn XP  ④ Repeat anytime</text>
+  </g>
+  <g transform="translate(90,452)">
+    <rect x="0" y="0" width="900" height="500" rx="34" fill="${C.card}" stroke="${C.line}"/>
+    <text x="44" y="84" fill="${C.muted}" font-size="32" font-weight="700">QUEST #18 · 3 MIN</text>
+    <text x="856" y="84" text-anchor="end" fill="${C.accent}" font-size="38" font-weight="900">+20 XP</text>
+    <line x1="44" y1="116" x2="856" y2="116" stroke="${C.line}"/>
+    <g fill="${C.fg}" font-size="46" font-weight="700">
+      <text x="44" y="206">15 × Reverse Lunges</text>
+      <text x="44" y="294">30s Hollow Hold</text>
+      <text x="44" y="382">20 × Calf Raises</text>
+    </g>
+    ${pill(44,420,812,60,'rgba(255,177,60,0.12)','#ffb13c55')}
+    <text x="64" y="460" fill="${C.accent}" font-size="30" font-weight="700">🔁 Circuit · repeat 2 rounds</text>
+  </g>
+`,4));
+
+// 5 — it's smart (muscle figure + reason)
+slides.push(wrap(`
+  ${eyebrow('IT KNOWS YOUR BODY')}
+  <text x="90" y="300" fill="${C.fg}" font-size="74" font-weight="900">Smart, not random.</text>
+  <text x="90" y="392" fill="${C.muted}" font-size="42" font-weight="600">Every quest, swim &amp; lift updates a</text>
+  <text x="90" y="448" fill="${C.muted}" font-size="42" font-weight="600">recovery model for 10 muscle groups.</text>
+  <!-- mini figure -->
+  <g transform="translate(120,540)">
+    <ellipse cx="120" cy="40" rx="34" ry="40" fill="#22324d"/>
+    <rect x="78" y="86" width="84" height="150" rx="30" fill="#22324d"/>
+    <rect x="64" y="250" width="34" height="150" rx="16" fill="#22324d"/>
+    <rect x="142" y="250" width="34" height="150" rx="16" fill="#22324d"/>
+    <ellipse cx="100" cy="118" rx="20" ry="16" fill="${C.red}"/><ellipse cx="140" cy="118" rx="20" ry="16" fill="${C.red}"/>
+    <ellipse cx="81" cy="300" rx="16" ry="40" fill="${C.green}"/><ellipse cx="159" cy="300" rx="16" ry="40" fill="${C.green}"/>
+    <text x="120" y="452" text-anchor="middle" fill="${C.dim}" font-size="26" font-weight="700">red = tired · green = fresh</text>
+  </g>
+  <g transform="translate(440,560)">
+    <rect x="0" y="0" width="540" height="340" rx="28" fill="rgba(255,177,60,0.10)" stroke="#ffb13c44"/>
+    <text x="34" y="80" fill="${C.accent}" font-size="40" font-weight="900">💡 Why this quest?</text>
+    <g fill="${C.fg}" font-size="34" font-weight="600">
+      <text x="34" y="150">“Your shoulders are still</text>
+      <text x="34" y="198">recovering from yesterday’s</text>
+      <text x="34" y="246">swim, so today is legs</text>
+      <text x="34" y="294">&amp; core.”</text>
+    </g>
+  </g>
+`,5));
+
+// 6 — everything counts
+slides.push(wrap(`
+  ${eyebrow('EVERYTHING COUNTS')}
+  <text x="90" y="300" fill="${C.fg}" font-size="74" font-weight="900">Your whole active</text>
+  <text x="90" y="392" fill="${C.fg}" font-size="74" font-weight="900">life counts.</text>
+  <g font-size="120" text-anchor="middle">
+    <text x="220" y="640">🏊</text><text x="540" y="640">🏐</text><text x="860" y="640">🏋️</text>
+    <text x="380" y="800">🏃</text><text x="700" y="800">🥾</text>
+  </g>
+  <text x="540" y="912" text-anchor="middle" fill="${C.muted}" font-size="40" font-weight="600">Swims, sports, runs — even gym sessions.</text>
+  <text x="540" y="966" text-anchor="middle" fill="${C.accent}" font-size="40" font-weight="800">It all earns XP and feeds the game.</text>
+`,6));
+
+// 7 — level up
+slides.push(wrap(`
+  ${eyebrow('LEVEL UP')}
+  <text x="90" y="300" fill="${C.fg}" font-size="72" font-weight="900">Be the main character</text>
+  <text x="90" y="384" fill="${C.fg}" font-size="72" font-weight="900">of your summer.</text>
+  <!-- XP ring -->
+  <g transform="translate(250,620)">
+    <circle r="120" fill="none" stroke="#22324d" stroke-width="26"/>
+    <circle r="120" fill="none" stroke="${C.pink}" stroke-width="26" stroke-linecap="round"
+      stroke-dasharray="754" stroke-dashoffset="150" transform="rotate(-90)"/>
+    <text x="0" y="-2" text-anchor="middle" fill="${C.fg}" font-size="64" font-weight="900">160</text>
+    <text x="0" y="44" text-anchor="middle" fill="${C.muted}" font-size="28" font-weight="700">XP TODAY</text>
+  </g>
+  <g transform="translate(470,520)">
+    ${pill(0,0,420,72,'rgba(255,93,162,0.18)')}
+    <text x="32" y="49" fill="${C.pink}" font-size="38" font-weight="900">🏆 Legendary Day</text>
+    <g fill="${C.fg}" font-size="38" font-weight="700">
+      <text x="0" y="160">🔥 7-day streak</text>
+      <text x="0" y="232">📈 Stats &amp; insights</text>
+      <text x="0" y="304">🎯 Active → Legendary</text>
+    </g>
+  </g>
+`,7));
+
+// 8 — better together
+slides.push(wrap(`
+  ${eyebrow('BETTER TOGETHER')}
+  <text x="90" y="300" fill="${C.fg}" font-size="78" font-weight="900">More fun with</text>
+  <text x="90" y="392" fill="${C.fg}" font-size="78" font-weight="900">someone.</text>
+  <g transform="translate(300,500)">
+    <circle cx="0" cy="80" r="90" fill="#ff6b6b"/><text x="0" y="108" text-anchor="middle" fill="#1a1205" font-size="72" font-weight="900">A</text>
+    <circle cx="240" cy="80" r="90" fill="#4dabf7"/><text x="240" y="108" text-anchor="middle" fill="#1a1205" font-size="72" font-weight="900">+</text>
+    <text x="120" y="250" text-anchor="middle" fill="${C.accent}" font-size="40" font-weight="800">🔥 vs 🔥</text>
+  </g>
+  <text x="540" y="852" text-anchor="middle" fill="${C.muted}" font-size="42" font-weight="600">Separate profiles. Compare streaks.</text>
+  <text x="540" y="912" text-anchor="middle" fill="${C.muted}" font-size="42" font-weight="600">Make the holiday a co-op quest.</text>
+`,8));
+
+// 9 — CTA
+slides.push(wrap(`
+  <circle cx="540" cy="250" r="220" fill="url(#glow)"/>
+  ${sun(540,250,92)}
+  <text x="540" y="470" text-anchor="middle" fill="${C.fg}" font-size="92" font-weight="900">Ready to play?</text>
+  <text x="540" y="556" text-anchor="middle" fill="${C.muted}" font-size="42" font-weight="600">Free · no login · your data stays on your phone</text>
+  <g transform="translate(140,628)">
+    ${pill(0,0,800,108,'rgba(255,177,60,0.14)','#ffb13c66')}
+    <text x="400" y="70" text-anchor="middle" fill="${C.accent}" font-size="38" font-weight="800">anantsharma020.github.io/summer-quest</text>
+  </g>
+  <text x="540" y="836" text-anchor="middle" fill="${C.fg}" font-size="40" font-weight="700">Open it → Share → Add to Home Screen</text>
+  <text x="540" y="916" text-anchor="middle" fill="${C.pink}" font-size="46" font-weight="900">Be my Player 2. 🎮☀️</text>
+`,9,{noMark:true}));
+
+// ---- render ----------------------------------------------------------------
+const carousel = document.getElementById('carousel');
+const dotsEl = document.getElementById('dots');
+slides.forEach((svg, i) => {
+  const el = document.createElement('div');
+  el.className = 'slide';
+  el.innerHTML = `<div class="frame">${svg}</div><button class="btn ghost dl" data-i="${i}">⬇ Slide ${i+1}</button>`;
+  carousel.appendChild(el);
+  const d = document.createElement('div'); d.className = 'dot' + (i===0?' on':''); dotsEl.appendChild(d);
+});
+
+carousel.addEventListener('scroll', () => {
+  const center = carousel.scrollLeft + carousel.clientWidth / 2;
+  let best = 0, bd = Infinity;
+  [...carousel.children].forEach((el, k) => {
+    const c = el.offsetLeft + el.offsetWidth / 2, dd = Math.abs(c - center);
+    if (dd < bd) { bd = dd; best = k; }
+  });
+  [...dotsEl.children].forEach((d, k) => d.classList.toggle('on', k === best));
+});
+
+function downloadSlide(i){
+  return new Promise(res => {
+    const blob = new Blob([slides[i]], { type:'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = W;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#0a1019'; ctx.fillRect(0,0,W,W);
+      ctx.drawImage(img,0,0,W,W);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(b => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(b);
+        a.download = `summer-quest-${String(i+1).padStart(2,'0')}.png`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(()=>{ URL.revokeObjectURL(a.href); res(); }, 200);
+      }, 'image/png');
+    };
+    img.onerror = () => res();
+    img.src = url;
+  });
+}
+
+carousel.addEventListener('click', e => {
+  const b = e.target.closest('.dl'); if (b) downloadSlide(+b.dataset.i);
+});
+document.getElementById('dlAll').addEventListener('click', async () => {
+  for (let i=0;i<slides.length;i++){ await downloadSlide(i); await new Promise(r=>setTimeout(r,350)); }
+});
+</script>
+</body>
+</html>
