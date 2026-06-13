@@ -7,11 +7,11 @@ import * as S from './state.js';
 import {
   EXERCISES, CATEGORIES, SPORTS, ACTIVITY_TYPES, EQUIPMENT_OPTIONS,
   GOAL_OPTIONS, LOCATION_OPTIONS, MUSCLES, MUSCLE_IDS, exerciseById,
-  muscleName,
+  muscleName, GYM_EXERCISES, gymExerciseByName,
 } from './data.js';
 import {
   generateQuest, effortEvents, currentFatigue, volumeWindow, xpForDay,
-  currentStreak, dayRating, activityXp, dayKey, QUEST_XP,
+  currentStreak, dayRating, activityXp, gymXp, dayKey, QUEST_XP,
 } from './engine.js';
 import { bodyMap, muscleHighlight, demoSVG } from './ui-svg.js';
 
@@ -20,6 +20,18 @@ const nav = () => document.getElementById('nav');
 
 // Ephemeral UI state (not persisted).
 const ui = { selectedTier: 'standard', logType: 'swim', sport: 'volleyball', creatingProfile: false };
+
+// Quick-log shortcuts shown on the home screen (short labels for the grid).
+const QUICK_LOG = [
+  { type: 'swim', icon: '🏊', label: 'Swim' },
+  { type: 'run', icon: '🏃', label: 'Run' },
+  { type: 'walk', icon: '🚶', label: 'Walk' },
+  { type: 'gym', icon: '🏋️', label: 'Gym' },
+  { type: 'sport', icon: '🏐', label: 'Sport' },
+  { type: 'mobility', icon: '🧘', label: 'Mobility' },
+];
+const LOG_TABS = ['swim', 'run', 'walk', 'gym', 'sport', 'mobility'];
+const logTabMeta = (t) => t === 'sport' ? { icon: '🏐', name: 'Sport' } : t === 'gym' ? { icon: '🏋️', name: 'Gym' } : { icon: ACTIVITY_TYPES[t].icon, name: ACTIVITY_TYPES[t].name };
 
 // ---- small helpers ---------------------------------------------------------
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -164,8 +176,7 @@ function screenHome() {
 
   <div class="section-title">Quick log</div>
   <div class="quick-log">
-    ${['swim', 'run', 'walk', 'mobility'].map(t => `<a class="ql" href="#/log?type=${t}"><span class="ql-icon">${ACTIVITY_TYPES[t].icon}</span>${ACTIVITY_TYPES[t].name}</a>`).join('')}
-    <a class="ql" href="#/log?type=sport"><span class="ql-icon">🏐</span>Sport</a>
+    ${QUICK_LOG.map(q => `<a class="ql" href="#/log?type=${q.type}"><span class="ql-icon">${q.icon}</span>${q.label}</a>`).join('')}
   </div>
 
   <div class="section-title">Recent activity</div>
@@ -177,7 +188,12 @@ function recentFeed(n) {
   const { quests, logs } = S.get();
   const items = [];
   for (const q of quests) if (q.status === 'completed' && q.completedAt) items.push({ t: q.completedAt, icon: '⚡', title: `${q.tierName}`, sub: q.exercises.map(e => exerciseById(e.exerciseId)?.name).slice(0, 2).join(', '), xp: QUEST_XP[q.tier] });
-  for (const l of logs) items.push({ t: l.createdAt, icon: l.icon || '🏅', title: l.label, sub: `${l.minutes} min${l.distance ? ` · ${l.distance}${l.metric === 'swim_m' ? ' m' : ' km'}` : ''}`, xp: l.xp });
+  for (const l of logs) {
+    const sub = l.kind === 'gym'
+      ? `${l.sets}×${l.reps}${l.weight ? ` · ${l.weight}kg` : ''}`
+      : `${l.minutes} min${l.distance ? ` · ${l.distance}${l.metric === 'swim_m' ? ' m' : ' km'}` : ''}`;
+    items.push({ t: l.createdAt, icon: l.icon || '🏅', title: l.label, sub, xp: l.xp });
+  }
   items.sort((a, b) => new Date(b.t) - new Date(a.t));
   if (!items.length) return '';
   return `<div class="feed">${items.slice(0, n).map(it => `
@@ -233,13 +249,34 @@ function screenLog() {
   if (params.get('type')) ui.logType = params.get('type');
   const type = ui.logType;
   const isSport = type === 'sport';
-  const def = isSport ? null : ACTIVITY_TYPES[type];
+  const isGym = type === 'gym';
+  const def = (isSport || isGym) ? null : ACTIVITY_TYPES[type];
 
-  const typeTabs = ['swim', 'run', 'walk', 'mobility', 'sport'].map(t => {
-    const icon = t === 'sport' ? '🏐' : ACTIVITY_TYPES[t].icon;
-    const name = t === 'sport' ? 'Sport' : ACTIVITY_TYPES[t].name;
-    return `<button class="logtab ${type === t ? 'on' : ''}" data-action="set-log-type" data-type="${t}"><span>${icon}</span>${name}</button>`;
+  const typeTabs = LOG_TABS.map(t => {
+    const m = logTabMeta(t);
+    return `<button class="logtab ${type === t ? 'on' : ''}" data-action="set-log-type" data-type="${t}"><span>${m.icon}</span>${m.name}</button>`;
   }).join('');
+
+  // Gym lift logging — searchable exercise, weight, sets x reps, live muscle detection.
+  if (isGym) {
+    return `
+    <header class="topbar"><a class="back" href="#/home">←</a><div class="pname">Log Gym Exercise</div></header>
+    <div class="logtabs">${typeTabs}</div>
+    <div class="card log-form">
+      <label class="field"><span>Exercise</span>
+        <input id="gym-name" list="gym-list" placeholder="e.g. Dumbbell Chest Press" autocomplete="off" data-live>
+        <datalist id="gym-list">${GYM_EXERCISES.map(g => `<option value="${esc(g.name)}"></option>`).join('')}</datalist>
+      </label>
+      <div class="field"><span>Detected muscles</span><div class="chips" id="gym-muscles"><span class="muted-note">Start typing and pick an exercise…</span></div></div>
+      <div class="gym-row">
+        <label class="field"><span>Weight/side (kg)</span><input id="gym-weight" type="number" min="0" step="0.5" placeholder="opt." data-live></label>
+        <label class="field"><span>Sets</span><input id="gym-sets" type="number" min="1" step="1" value="3" data-live></label>
+        <label class="field"><span>Reps</span><input id="gym-reps" type="number" min="1" step="1" value="10" data-live></label>
+      </div>
+      <div class="xp-preview">Earns <strong id="xp-preview">+0</strong> XP</div>
+      <button class="btn-primary big" data-action="save-log">Save Exercise</button>
+    </div>`;
+  }
 
   let fields = '';
   if (isSport) {
@@ -436,6 +473,17 @@ export function render() {
 }
 
 function updateLogPreview() {
+  if (ui.logType === 'gym') {
+    const gx = gymExerciseByName(document.getElementById('gym-name')?.value);
+    const sets = parseInt(document.getElementById('gym-sets')?.value) || 0;
+    const reps = parseInt(document.getElementById('gym-reps')?.value) || 0;
+    const weight = parseFloat(document.getElementById('gym-weight')?.value) || 0;
+    const xpEl = document.getElementById('xp-preview');
+    if (xpEl) xpEl.textContent = '+' + (gx ? gymXp(sets, reps, weight) : 0);
+    const mEl = document.getElementById('gym-muscles');
+    if (mEl) mEl.innerHTML = gx ? muscleChips(gx.muscles) : '<span class="muted-note">Start typing and pick an exercise…</span>';
+    return;
+  }
   const el = document.getElementById('xp-preview');
   if (el) el.textContent = '+' + logPreviewXp();
 }
@@ -508,6 +556,24 @@ async function onClick(e) {
 
 async function saveLog() {
   const type = ui.logType, isSport = type === 'sport';
+
+  if (type === 'gym') {
+    const gx = gymExerciseByName(document.getElementById('gym-name').value);
+    if (!gx) { toast('Pick an exercise from the list'); return; }
+    const sets = Math.max(1, parseInt(document.getElementById('gym-sets').value) || 0);
+    const reps = Math.max(1, parseInt(document.getElementById('gym-reps').value) || 0);
+    const weight = parseFloat(document.getElementById('gym-weight').value) || 0;
+    const log = {
+      kind: 'gym', subtype: 'gym', gymId: gx.id, exerciseName: gx.name,
+      sets, reps, weight, minutes: sets * 3, xp: gymXp(sets, reps, weight),
+      label: gx.name, icon: '🏋️', metric: null,
+    };
+    await S.addLog(log);
+    toast(`Logged ${gx.name} · +${log.xp} XP`);
+    location.hash = '#/home';
+    return;
+  }
+
   const mins = Math.max(1, parseInt(document.getElementById('log-minutes').value) || 0);
   let log;
   if (isSport) {

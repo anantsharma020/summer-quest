@@ -108,7 +108,7 @@ body {
 .pending-card .btn-ghost { margin-left: auto; }
 
 /* ---- quick log ---- */
-.quick-log { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.quick-log { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .ql {
   background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 4px;
   display: flex; flex-direction: column; align-items: center; gap: 5px; text-decoration: none;
@@ -200,6 +200,10 @@ body {
 }
 .field select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238ea2c0' stroke-width='2' fill='none'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; }
 .field input[type=range] { padding: 8px 0; }
+.gym-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 10px; }
+.gym-row .field { min-width: 0; }
+.gym-row .field input { width: 100%; min-width: 0; }
+.muted-note { color: var(--muted); font-size: 13px; font-weight: 600; }
 .xp-preview { text-align: center; font-size: 15px; color: var(--muted); }
 .xp-preview strong { color: var(--accent); font-size: 18px; }
 .equip-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

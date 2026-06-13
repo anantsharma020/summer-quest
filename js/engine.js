@@ -9,13 +9,23 @@
 
 import {
   MUSCLE_IDS, CATEGORIES, EXERCISES, CHAINS, exerciseById,
-  ACTIVITY_TYPES, SPORTS, muscleName,
+  ACTIVITY_TYPES, SPORTS, muscleName, gymExerciseById,
 } from './data.js';
 
 const HOUR = 3600 * 1000;
 const FATIGUE_HALF_LIFE_H = 30;      // muscle fatigue half-life in hours
 const QUEST_FATIGUE_K = 2.2;         // load per unit of quest volume
 const ACTIVITY_FATIGUE_K = 1.4;      // load per (weight x minute) of activity
+const GYM_FATIGUE_K = 2.0;           // load per (rep x muscle-weight) of gym work
+
+// Heavier weight => more fatigue. Bounded 0.8x (light/bodyweight) .. 1.6x (heavy).
+const gymLoadMult = (weight) => 0.8 + 0.4 * Math.max(0, Math.min(2, (weight || 0) / 20));
+
+// XP for a gym set block, comparable to a solid quest/activity. Clamped 20..90.
+export function gymXp(sets, reps, weight) {
+  const base = (sets || 0) * (reps || 0) * 0.9 + (weight ? Math.min(weight, 40) * 0.2 : 0);
+  return Math.max(20, Math.min(90, Math.round(base)));
+}
 
 // --------------------------------------------------------------------------
 // Date helpers (local time).
@@ -60,6 +70,23 @@ export function effortEvents(quests, logs) {
   for (const l of logs) {
     const time = new Date(l.createdAt).getTime();
     const fatigue = {}, reps = {};
+
+    // Gym lifts: total reps x muscle weight, scaled by how heavy the load was.
+    if (l.kind === 'gym') {
+      const gx = gymExerciseById(l.gymId);
+      if (gx) {
+        const totalReps = (l.sets || 0) * (l.reps || 0);
+        const mult = gymLoadMult(l.weight);
+        for (const [m, w] of Object.entries(gx.muscles)) {
+          if (!MUSCLE_IDS.includes(m)) continue;
+          reps[m] = (reps[m] || 0) + totalReps * w;
+          fatigue[m] = (fatigue[m] || 0) + totalReps * w * GYM_FATIGUE_K * mult;
+        }
+      }
+      events.push({ time, fatigue, reps, source: 'activity', log: l });
+      continue;
+    }
+
     const def = l.kind === 'sport' ? SPORTS[l.subtype] : ACTIVITY_TYPES[l.subtype];
     let fmap = {};
     if (l.kind === 'sport') fmap = def ? def.fatigue : {};

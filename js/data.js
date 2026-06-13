@@ -295,6 +295,71 @@ export const SPORTS = {
   cycling:      { name: 'Cycling',          icon: '🚴', xpPerMin: 1.2, fatigue: { quads: 0.7, calves: 0.4, glutes: 0.4, conditioning: 0.8 } },
 };
 
+// ---------------------------------------------------------------------------
+// Gym / weighted exercises. Logged with weight + sets x reps. The muscle map
+// is how the engine "understands" what was trained; weight scales the fatigue
+// load so heavy sessions suppress the matching muscles in upcoming quests.
+// ---------------------------------------------------------------------------
+export const GYM_EXERCISES = [
+  // chest
+  { id: 'db_chest_press',   name: 'Dumbbell Chest Press',    muscles: { chest: 1.0, triceps: 0.6, shoulders: 0.5 } },
+  { id: 'bb_bench',         name: 'Barbell Bench Press',     muscles: { chest: 1.0, triceps: 0.6, shoulders: 0.5 } },
+  { id: 'incline_db_press', name: 'Incline Dumbbell Press',  muscles: { chest: 0.9, shoulders: 0.6, triceps: 0.5 } },
+  { id: 'chest_fly',        name: 'Chest Fly',               muscles: { chest: 1.0, shoulders: 0.3 } },
+  { id: 'cable_crossover',  name: 'Cable Crossover',         muscles: { chest: 1.0, shoulders: 0.3 } },
+  { id: 'machine_chest',    name: 'Machine Chest Press',     muscles: { chest: 1.0, triceps: 0.5, shoulders: 0.4 } },
+  // shoulders
+  { id: 'ohp',              name: 'Overhead Press',          muscles: { shoulders: 1.0, triceps: 0.6, chest: 0.3 } },
+  { id: 'db_shoulder_press',name: 'Dumbbell Shoulder Press', muscles: { shoulders: 1.0, triceps: 0.5 } },
+  { id: 'lateral_raise',    name: 'Lateral Raise',           muscles: { shoulders: 1.0 } },
+  { id: 'front_raise',      name: 'Front Raise',             muscles: { shoulders: 0.9 } },
+  { id: 'rear_delt_fly',    name: 'Rear Delt Fly',           muscles: { shoulders: 0.8, back: 0.4 } },
+  // back
+  { id: 'lat_pulldown',     name: 'Lat Pulldown',            muscles: { back: 1.0, biceps: 0.6 } },
+  { id: 'cable_row',        name: 'Seated Cable Row',        muscles: { back: 1.0, biceps: 0.6, shoulders: 0.3 } },
+  { id: 'barbell_row',      name: 'Barbell Row',             muscles: { back: 1.0, biceps: 0.6, shoulders: 0.3 } },
+  { id: 'db_row',           name: 'Dumbbell Row',            muscles: { back: 1.0, biceps: 0.6 } },
+  { id: 't_bar_row',        name: 'T-Bar Row',               muscles: { back: 1.0, biceps: 0.5 } },
+  { id: 'deadlift',         name: 'Deadlift',                muscles: { back: 0.8, hamstrings: 0.9, glutes: 0.9, core: 0.5, quads: 0.4 } },
+  // arms
+  { id: 'bicep_curl',       name: 'Dumbbell Bicep Curl',     muscles: { biceps: 1.0 } },
+  { id: 'barbell_curl',     name: 'Barbell Curl',            muscles: { biceps: 1.0 } },
+  { id: 'hammer_curl',      name: 'Hammer Curl',             muscles: { biceps: 1.0 } },
+  { id: 'preacher_curl',    name: 'Preacher Curl',           muscles: { biceps: 1.0 } },
+  { id: 'tricep_pushdown',  name: 'Tricep Pushdown',         muscles: { triceps: 1.0 } },
+  { id: 'skullcrusher',     name: 'Skullcrusher',            muscles: { triceps: 1.0 } },
+  { id: 'oh_tricep_ext',    name: 'Overhead Tricep Extension', muscles: { triceps: 1.0 } },
+  { id: 'cgbp',             name: 'Close-Grip Bench Press',  muscles: { triceps: 0.9, chest: 0.6, shoulders: 0.4 } },
+  // legs
+  { id: 'back_squat',       name: 'Barbell Back Squat',      muscles: { quads: 1.0, glutes: 0.9, hamstrings: 0.5, core: 0.4, calves: 0.3 } },
+  { id: 'front_squat',      name: 'Front Squat',             muscles: { quads: 1.0, glutes: 0.7, core: 0.5 } },
+  { id: 'leg_press',        name: 'Leg Press',               muscles: { quads: 1.0, glutes: 0.8, hamstrings: 0.4 } },
+  { id: 'leg_extension',    name: 'Leg Extension',           muscles: { quads: 1.0 } },
+  { id: 'leg_curl',         name: 'Leg Curl',                muscles: { hamstrings: 1.0 } },
+  { id: 'rdl',              name: 'Romanian Deadlift',       muscles: { hamstrings: 1.0, glutes: 0.9, back: 0.5 } },
+  { id: 'hip_thrust',       name: 'Hip Thrust',              muscles: { glutes: 1.0, hamstrings: 0.5 } },
+  { id: 'db_walking_lunge', name: 'Weighted Walking Lunge',  muscles: { quads: 0.9, glutes: 0.9, hamstrings: 0.5, calves: 0.3 } },
+  { id: 'calf_raise_machine', name: 'Calf Raise (Machine)',  muscles: { calves: 1.0 } },
+  // core
+  { id: 'cable_crunch',     name: 'Cable Crunch',            muscles: { core: 1.0 } },
+  { id: 'hanging_leg_raise',name: 'Hanging Leg Raise',       muscles: { core: 1.0 } },
+  { id: 'weighted_plank',   name: 'Weighted Plank',          muscles: { core: 1.0, shoulders: 0.3 } },
+];
+
+export const gymExerciseById = id => GYM_EXERCISES.find(e => e.id === id);
+
+// Resolve a typed string to a catalog exercise: exact match, then name-contains,
+// then string-contains-name (so "did some lat pulldown" still resolves).
+export const gymExerciseByName = (str) => {
+  if (!str) return null;
+  const s = str.trim().toLowerCase();
+  if (!s) return null;
+  return GYM_EXERCISES.find(e => e.name.toLowerCase() === s)
+    || GYM_EXERCISES.find(e => e.name.toLowerCase().includes(s))
+    || GYM_EXERCISES.find(e => s.includes(e.name.toLowerCase()))
+    || null;
+};
+
 // Equipment options shown in the profile editor.
 export const EQUIPMENT_OPTIONS = [
   { id: 'pullup-bar', name: 'Pull-up bar' },

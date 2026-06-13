@@ -1,5 +1,5 @@
 // Service worker: cache the app shell for offline use.
-const CACHE = 'summer-quest-v2';
+const CACHE = 'summer-quest-v3';
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.webmanifest',
   './icon.svg', './icon-maskable.svg',
