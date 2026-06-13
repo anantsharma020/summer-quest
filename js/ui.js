@@ -8,6 +8,7 @@ import {
   EXERCISES, CATEGORIES, SPORTS, ACTIVITY_TYPES, EQUIPMENT_OPTIONS,
   GOAL_OPTIONS, LOCATION_OPTIONS, MUSCLES, MUSCLE_IDS, exerciseById,
   muscleName, GYM_EXERCISES, EFFORT_LEVELS, effortById,
+  gymExerciseById, STARTER_PROGRAMS,
 } from './data.js';
 import {
   generateQuest, swapExercise, estMinutes, effortEvents, currentFatigue,
@@ -305,6 +306,9 @@ function screenGym(typeTabs) {
   return `
   <header class="topbar"><a class="back" href="#/home">←</a><div class="pname">Gym Session</div></header>
   <div class="logtabs">${typeTabs}</div>
+
+  <div class="section-title">Starter programs</div>
+  <div class="prog-chips">${STARTER_PROGRAMS.map(p => `<button class="prog-chip preset" data-action="load-preset" data-id="${p.id}">⭐ ${esc(p.name)} <span>${p.exercises.length}</span></button>`).join('')}</div>
 
   ${programs.length ? `<div class="section-title">Your programs</div>
     <div class="prog-chips">${programs.map(p => `<button class="prog-chip" data-action="load-program" data-id="${p.id}">${esc(p.name)} <span>${p.exercises.length}</span></button>`).join('')}</div>` : ''}
@@ -715,6 +719,17 @@ async function onClick(e) {
     case 'load-program': {
       const p = S.get().programs.find(x => x.id === t.dataset.id);
       if (p) { ui.session = p.exercises.map(e => ({ ...e })); ui.sessionName = p.name; render(); }
+      break;
+    }
+    case 'load-preset': {
+      const preset = STARTER_PROGRAMS.find(x => x.id === t.dataset.id);
+      if (preset) {
+        ui.session = preset.exercises
+          .map(e => { const gx = gymExerciseById(e.ref); return gx ? buildEntry(gx, e.weight, e.sets, e.reps ?? e.seconds, e.effort) : null; })
+          .filter(Boolean);
+        ui.sessionName = preset.name;
+        render();
+      }
       break;
     }
     case 'save-program': {

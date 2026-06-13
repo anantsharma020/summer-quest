@@ -377,6 +377,27 @@ export const gymExerciseByName = (str) => {
     || null;
 };
 
+// Built-in starter programs — shown as one-tap chips in the Gym tab. Entries
+// reference a GYM_EXERCISES id; muscles/unit are resolved from the catalog at
+// load time. (amount = reps, or seconds for hold-based exercises.)
+export const STARTER_PROGRAMS = [
+  { id: 'preset_my', name: 'My Program', exercises: [
+    { ref: 'rdl',              weight: 60, sets: 4, reps: 10, effort: 'hard' },
+    { ref: 'chinup_negative',  weight: 0,  sets: 4, reps: 3,  effort: 'hard' },
+    { ref: 'db_chest_press',   weight: 17, sets: 3, reps: 10, effort: 'hard' },
+    { ref: 'ghd_back_ext',     weight: 8,  sets: 3, reps: 12, effort: 'hard' },
+    { ref: 'bicep_curl',       weight: 7,  sets: 3, reps: 10, effort: 'hard' },
+    { ref: 'crunch_hold',      weight: 0,  sets: 3, seconds: 60, effort: 'hard' },
+  ] },
+  { id: 'preset_partner', name: "Partner's Program", exercises: [
+    { ref: 'ffe_split_squat',      weight: 5,  sets: 4, reps: 10, effort: 'hard' },
+    { ref: 'single_arm_cable_row', weight: 20, sets: 4, reps: 10, effort: 'hard' },
+    { ref: 'ghd_back_ext',         weight: 4,  sets: 3, reps: 12, effort: 'hard' },
+    { ref: 'cable_row',            weight: 25, sets: 3, reps: 12, effort: 'hard' },
+    { ref: 'crunches',             weight: 0,  sets: 3, reps: 10, effort: 'hard' },
+  ] },
+];
+
 // Equipment options shown in the profile editor.
 export const EQUIPMENT_OPTIONS = [
   { id: 'pullup-bar', name: 'Pull-up bar' },

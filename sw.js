@@ -1,6 +1,6 @@
 // Service worker: network-first so updates arrive automatically on the next
 // launch (no reinstall needed); falls back to cache when offline.
-const CACHE = 'summer-quest-v6';
+const CACHE = 'summer-quest-v7';
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.webmanifest',
   './icon.svg', './icon-maskable.svg',
