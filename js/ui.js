@@ -15,6 +15,7 @@ import {
   gymSessionXp, gymSessionMinutes, dayKey, QUEST_XP,
 } from './engine.js';
 import { bodyMap, muscleHighlight, demoSVG } from './ui-svg.js';
+import { exerciseMedia } from './media.js';
 import { HOWTO } from './howto.js';
 
 // Merged gym catalog (built-in + user custom) and a name resolver.
@@ -263,7 +264,7 @@ function screenQuest() {
     const ex = exerciseById(it.exerciseId);
     return `<div class="card ex-card">
       <div class="ex-top">
-        <div class="ex-demo">${demoSVG(ex.pattern)}</div>
+        <div class="ex-demo">${exerciseMedia(ex)}</div>
         <div class="ex-headinfo">
           <a class="ex-name" href="#/exercise/${ex.id}?from=quest">${i + 1}. ${esc(ex.name)} <span class="ex-info">ⓘ</span></a>
           <div class="ex-amount">${formatAmount(ex.unit, it.amount)}${q.rounds > 1 ? ' <span class="per-round">per round</span>' : ''}</div>
@@ -459,7 +460,7 @@ function screenLibrary() {
     return `<div class="section-title">${cat.name}</div>
       <div class="lib-grid">${list.map(e => `
         <a class="card lib-item" href="#/exercise/${e.id}">
-          <div class="lib-demo">${demoSVG(e.pattern)}</div>
+          <div class="lib-demo">${exerciseMedia(e)}</div>
           <div class="lib-name">${esc(e.name)}</div>
         </a>`).join('')}</div>`;
   }).join('')}`;
@@ -474,7 +475,7 @@ function screenExercise(id) {
   return `
   <header class="topbar"><a class="back" href="${back}">←</a><div class="pname">${esc(ex.name)}</div></header>
   <div class="card ex-detail">
-    <div class="ex-demo big">${demoSVG(ex.pattern)}</div>
+    <div class="ex-demo big">${exerciseMedia(ex)}</div>
     <div class="chips center">${muscleChips(ex.muscles)}</div>
     <div class="ex-map big">${bodyMap(muscleHighlight(ex.muscles), 'highlight', { labels: true })}</div>
     <div class="legend"><span class="chip chip-prim">Primary</span><span class="chip chip-sec">Secondary</span></div>

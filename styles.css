@@ -158,6 +158,13 @@ body {
 .quest-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
 
 /* ---- demo svg ---- */
+/* real-photo demo (free-exercise-db) cross-fading start/finish frames */
+.ex-media { position: relative; width: 100%; height: 100%; }
+.ex-photo { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; background: #fff; }
+.ex-photo .frame { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.ex-photo .f1 { animation: framefade 1.9s ease-in-out infinite; }
+@keyframes framefade { 0%, 38% { opacity: 0; } 55%, 90% { opacity: 1; } 100% { opacity: 0; } }
+
 .demo { width: 100%; height: 100%; display: block; }
 /* Style every figure primitive inside a demo (robust against grouping). */
 .demo line { fill: none; stroke: var(--demo-line); stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
