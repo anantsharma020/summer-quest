@@ -10,9 +10,9 @@ import {
   muscleName, GYM_EXERCISES, EFFORT_LEVELS, effortById,
 } from './data.js';
 import {
-  generateQuest, effortEvents, currentFatigue, volumeWindow, xpForDay,
-  currentStreak, dayRating, activityXp, gymEntryXp, gymSessionXp,
-  gymSessionMinutes, dayKey, QUEST_XP,
+  generateQuest, swapExercise, estMinutes, effortEvents, currentFatigue,
+  volumeWindow, xpForDay, currentStreak, dayRating, activityXp, gymEntryXp,
+  gymSessionXp, gymSessionMinutes, dayKey, QUEST_XP,
 } from './engine.js';
 import { bodyMap, muscleHighlight, demoSVG } from './ui-svg.js';
 import { HOWTO } from './howto.js';
@@ -38,6 +38,7 @@ const ui = {
   // gym session builder
   session: [], sessionName: '', gymEffort: 'hard', customUnit: 'reps',
   customOpen: false, customMuscles: {},
+  backupView: null, backupText: '',
 };
 
 // Build a gym session entry from the add-form inputs / a catalog exercise.
@@ -267,6 +268,7 @@ function screenQuest() {
           <a class="ex-name" href="#/exercise/${ex.id}?from=quest">${i + 1}. ${esc(ex.name)} <span class="ex-info">ⓘ</span></a>
           <div class="ex-amount">${formatAmount(ex.unit, it.amount)}${q.rounds > 1 ? ' <span class="per-round">per round</span>' : ''}</div>
           <div class="chips">${muscleChips(ex.muscles)}</div>
+          <button class="ex-swap" data-action="swap-exercise" data-i="${i}">↻ Swap this exercise</button>
         </div>
       </div>
       <div class="ex-mid">
@@ -523,6 +525,25 @@ function screenProfile() {
     <button class="prof-row add" data-action="new-profile">＋ Add profile</button>
   </div>
   ${profileForm(p, false)}
+
+  <div class="section-title">Backup &amp; restore</div>
+  <div class="card backup-card">
+    <p class="muted-note">Your data is stored only on this device. Export a backup before reinstalling the app, or to move to another phone.</p>
+    <div class="two-btn">
+      <button class="btn-ghost" data-action="backup-export">⤓ Export</button>
+      <button class="btn-ghost" data-action="backup-import">⤒ Restore</button>
+    </div>
+    ${ui.backupView === 'export' ? `
+      <textarea class="backup-area" id="backup-out" readonly>${esc(ui.backupText)}</textarea>
+      <div class="two-btn">
+        <button class="btn-primary" data-action="backup-copy">Copy</button>
+        <button class="btn-ghost" data-action="backup-download">Download .json</button>
+      </div>` : ''}
+    ${ui.backupView === 'import' ? `
+      <textarea class="backup-area" id="backup-in" placeholder="Paste your backup JSON here…"></textarea>
+      <button class="btn-primary" data-action="backup-restore">Restore from backup</button>` : ''}
+  </div>
+
   <button class="btn-danger" data-action="delete-profile" data-id="${p.id}">Delete this profile</button>
   `;
 }
@@ -616,8 +637,22 @@ async function onClick(e) {
     case 'regenerate': {
       const p = S.activeProfile();
       const cur = S.pendingQuest();
-      const q = generateQuest(p, S.get().quests, S.get().logs, cur ? cur.tier : ui.selectedTier);
+      const avoid = new Set((cur ? cur.exercises : []).map(e => e.exerciseId));
+      const q = generateQuest(p, S.get().quests, S.get().logs, cur ? cur.tier : ui.selectedTier, Date.now(), { avoid, jitter: true });
       await S.savePendingQuest(q);
+      render();
+      break;
+    }
+    case 'swap-exercise': {
+      const p = S.activeProfile();
+      const q = S.pendingQuest();
+      if (!q) break;
+      const i = parseInt(t.dataset.i);
+      const item = swapExercise(p, q.exercises, i, q.tier, S.get().quests, S.get().logs);
+      if (!item) { toast('No alternative available for that one'); break; }
+      q.exercises[i] = item;
+      q.estMinutes = estMinutes(q.exercises, q.rounds);
+      await S.persistQuest(q);
       render();
       break;
     }
@@ -707,6 +742,40 @@ async function onClick(e) {
     case 'new-profile': ui.creatingProfile = true; render(); break;
     case 'create-profile': await saveProfile(true); break;
     case 'update-profile': await saveProfile(false); break;
+    case 'backup-export':
+      ui.backupText = JSON.stringify(await S.exportData());
+      ui.backupView = 'export';
+      render();
+      break;
+    case 'backup-import':
+      ui.backupView = ui.backupView === 'import' ? null : 'import';
+      render();
+      break;
+    case 'backup-copy':
+      try { await navigator.clipboard.writeText(document.getElementById('backup-out').value); toast('Backup copied to clipboard'); }
+      catch (e) { document.getElementById('backup-out').select(); toast('Select all and copy'); }
+      break;
+    case 'backup-download': {
+      const blob = new Blob([ui.backupText], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `summer-quest-backup-${dayKey()}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      break;
+    }
+    case 'backup-restore': {
+      const raw = document.getElementById('backup-in').value.trim();
+      if (!raw) { toast('Paste a backup first'); break; }
+      try {
+        await S.importData(JSON.parse(raw));
+        ui.backupView = null;
+        toast('Backup restored');
+        location.hash = '#/home';
+      } catch (e) { toast('Could not read that backup'); }
+      break;
+    }
+
     case 'delete-profile':
       if (confirm('Delete this profile and all its data? This cannot be undone.')) {
         await S.deleteProfile(t.dataset.id); ui.creatingProfile = false; location.hash = '#/home';
@@ -759,6 +828,6 @@ export function bindEvents() {
     if (e.target.closest('[data-live]') && route().startsWith('/log')) updateLogPreview();
     if (e.target.classList.contains('pf-equip')) e.target.closest('.equip')?.classList.toggle('on', e.target.checked);
   });
-  window.addEventListener('hashchange', () => { ui.creatingProfile = false; render(); });
+  window.addEventListener('hashchange', () => { ui.creatingProfile = false; ui.backupView = null; render(); });
   S.subscribe(render);
 }

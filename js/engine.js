@@ -226,18 +226,16 @@ function categoryFatigue(catKey, fatigue) {
 
 // Pick the exercise within a chain that matches the user's progression level,
 // then bias the chosen category's exercises toward the targeted muscle.
-function pickExercise(catKey, targetMuscle, fatigue, profile, used) {
+// opts.avoid: ids to skip (e.g. the previous quest's). opts.jitter: when true,
+// randomise among the top candidates so regenerate/swap give fresh variety.
+function pickExercise(catKey, targetMuscle, fatigue, profile, used, opts = {}) {
   const level = profile.level || 2;
   const equip = new Set(profile.equipment || []);
-  let pool = EXERCISES.filter(e =>
-    e.category === catKey &&
-    !used.has(e.id) &&
-    (e.equip || []).every(req => equip.has(req) || req === 'wall'));
+  const usable = e => e.category === catKey && (e.equip || []).every(req => equip.has(req) || req === 'wall');
 
-  if (!pool.length) {
-    pool = EXERCISES.filter(e => e.category === catKey &&
-      (e.equip || []).every(req => equip.has(req) || req === 'wall'));
-  }
+  let pool = EXERCISES.filter(e => usable(e) && !used.has(e.id) && !(opts.avoid && opts.avoid.has(e.id)));
+  if (!pool.length) pool = EXERCISES.filter(e => usable(e) && !used.has(e.id)); // relax avoid
+  if (!pool.length) pool = EXERCISES.filter(usable);
   if (!pool.length) return null;
 
   // Reduce to one representative per chain — the variation nearest the user's
@@ -250,12 +248,26 @@ function pickExercise(catKey, targetMuscle, fatigue, profile, used) {
     }
   }
   let candidates = Object.values(byChain);
-  // Prefer a candidate that trains the target muscle and isn't itself fatigued.
-  candidates.sort((a, b) => {
-    const aw = (a.muscles[targetMuscle] || 0), bw = (b.muscles[targetMuscle] || 0);
-    return bw - aw;
-  });
+  candidates.sort((a, b) => (b.muscles[targetMuscle] || 0) - (a.muscles[targetMuscle] || 0));
+
+  if (opts.jitter && candidates.length > 1) {
+    // Randomise among the strongest few candidates for the target muscle.
+    const top = candidates.slice(0, Math.min(3, candidates.length));
+    return top[Math.floor(Math.random() * top.length)];
+  }
   return candidates[0] || null;
+}
+
+// Replace a single exercise in an existing quest with a fresh alternative from
+// the same category (used by the per-exercise "swap" button).
+export function swapExercise(profile, items, index, tier, quests, logs, now = Date.now()) {
+  const fatigue = currentFatigue(effortEvents(quests, logs), now);
+  const cur = exerciseById(items[index].exerciseId);
+  if (!cur) return null;
+  const used = new Set(items.map(it => it.exerciseId)); // exclude everything already in the quest
+  const target = Object.entries(cur.muscles).sort((a, b) => b[1] - a[1])[0][0];
+  const ex = pickExercise(cur.category, target, fatigue, profile, used, { jitter: true });
+  return ex ? prescribe(ex, tier, profile) : null;
 }
 
 function prescribe(ex, tier, profile) {
@@ -267,7 +279,7 @@ function prescribe(ex, tier, profile) {
   return { exerciseId: ex.id, unit: ex.unit, amount };
 }
 
-function estMinutes(items, rounds = 1) {
+export function estMinutes(items, rounds = 1) {
   let secs = 0;
   for (const it of items) {
     const ex = exerciseById(it.exerciseId);
@@ -326,10 +338,12 @@ function buildReason(focusMuscles, fatigue, volume, events, now) {
 
 const capitalize = s => s.charAt(0).toUpperCase() + s.slice(1);
 
-export function generateQuest(profile, quests, logs, tier = 'standard', now = Date.now()) {
+export function generateQuest(profile, quests, logs, tier = 'standard', now = Date.now(), opts = {}) {
   const events = effortEvents(quests, logs);
   const fatigue = currentFatigue(events, now);
   const volume = volumeWindow(events, 7, now);
+  const jitter = opts.jitter !== false; // vary by default
+  const avoid = opts.avoid || null;
 
   // Need score per muscle: fresh + under-trained => high priority.
   const maxVol = Math.max(1, ...MUSCLE_IDS.map(m => volume[m]));
@@ -348,7 +362,7 @@ export function generateQuest(profile, quests, logs, tier = 'standard', now = Da
     if (cat === 'mobility') { catScore[cat] = 0; continue; }
     const ms = CATEGORIES[cat].muscles;
     const avgNeed = ms.reduce((s, m) => s + need[m], 0) / ms.length;
-    catScore[cat] = avgNeed - categoryFatigue(cat, fatigue) * 0.5;
+    catScore[cat] = avgNeed - categoryFatigue(cat, fatigue) * 0.5 + (jitter ? Math.random() * 10 : 0);
   }
   const rankedCats = Object.keys(catScore).filter(c => c !== 'mobility')
     .sort((a, b) => catScore[b] - catScore[a]);
@@ -361,7 +375,7 @@ export function generateQuest(profile, quests, logs, tier = 'standard', now = Da
   // If the body is broadly fatigued, lead with a mobility/recovery move.
   const avgFatigue = MUSCLE_IDS.reduce((s, m) => s + fatigue[m], 0) / MUSCLE_IDS.length;
   if (avgFatigue >= 60) {
-    const mob = pickExercise('mobility', targets[0], fatigue, profile, used);
+    const mob = pickExercise('mobility', targets[0], fatigue, profile, used, { avoid, jitter });
     if (mob) { items.push(prescribe(mob, tier, profile)); used.add(mob.id); usedCats.push('mobility'); }
   }
 
@@ -373,7 +387,7 @@ export function generateQuest(profile, quests, logs, tier = 'standard', now = Da
     const target = CATEGORIES[cat].muscles
       .slice()
       .sort((a, b) => need[b] - need[a])[0] || targets[0];
-    const ex = pickExercise(cat, target, fatigue, profile, used);
+    const ex = pickExercise(cat, target, fatigue, profile, used, { avoid, jitter });
     if (ex) { items.push(prescribe(ex, tier, profile)); used.add(ex.id); usedCats.push(cat); }
     ti++;
     if (ti > 20) break; // safety

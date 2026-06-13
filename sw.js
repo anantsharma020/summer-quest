@@ -1,5 +1,6 @@
-// Service worker: cache the app shell for offline use.
-const CACHE = 'summer-quest-v4';
+// Service worker: network-first so updates arrive automatically on the next
+// launch (no reinstall needed); falls back to cache when offline.
+const CACHE = 'summer-quest-v5';
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.webmanifest',
   './icon.svg', './icon-maskable.svg',
@@ -15,13 +16,17 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
+// Network-first: always try the network (so the user gets the latest deploy),
+// update the cache on success, and fall back to cache (then the app shell)
+// when offline.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  if (new URL(e.request.url).origin !== self.location.origin) return;
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request).then(res => {
+    fetch(e.request).then(res => {
       const copy = res.clone();
       caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
       return res;
-    }).catch(() => cached))
+    }).catch(() => caches.match(e.request).then(c => c || caches.match('./index.html')))
   );
 });

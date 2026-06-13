@@ -144,6 +144,11 @@ export async function completeQuest(id) {
   emit();
 }
 
+export async function persistQuest(q) {
+  await db.put('quests', q);
+  emit();
+}
+
 export async function discardPendingQuest() {
   const q = pendingQuest();
   if (!q) return;
@@ -171,4 +176,28 @@ export async function deleteLog(id) {
   await db.del('logs', id);
   state.logs = state.logs.filter(l => l.id !== id);
   emit();
+}
+
+// ---- backup / restore ------------------------------------------------------
+export async function exportData() {
+  return {
+    app: 'summer-quest', version: 1, exportedAt: new Date().toISOString(),
+    profiles: await db.getAll('profiles'),
+    quests: await db.getAll('quests'),
+    logs: await db.getAll('logs'),
+    programs: await db.getAll('programs'),
+    customExercises: await db.getAll('customExercises'),
+    activeProfileId: await db.getMeta('activeProfileId', null),
+  };
+}
+
+export async function importData(data) {
+  if (!data || data.app !== 'summer-quest') throw new Error('Not a Summer Quest backup');
+  for (const p of data.profiles || []) await db.put('profiles', p);
+  for (const q of data.quests || []) await db.put('quests', q);
+  for (const l of data.logs || []) await db.put('logs', l);
+  for (const pr of data.programs || []) await db.put('programs', pr);
+  for (const c of data.customExercises || []) await db.put('customExercises', c);
+  if (data.activeProfileId) await db.setMeta('activeProfileId', data.activeProfileId);
+  await init();
 }
