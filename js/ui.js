@@ -40,7 +40,7 @@ const ui = {
   // gym session builder
   session: [], sessionName: '', gymEffort: 'hard', customUnit: 'reps',
   customMuscles: {}, addMode: 'list', qaMusclesOpen: false,
-  editingIndex: null, editEffort: 'hard', loadedProgramId: null,
+  editingIndex: null, editEffort: 'hard', editMuscles: {}, loadedProgramId: null,
   logDate: dayKey(), follow: null,
   backupView: null, backupText: '',
 };
@@ -499,19 +499,26 @@ function screenGym(typeTabs, category = 'gym') {
   ${ui.loadedProgramId ? `<button class="link-btn" data-action="save-program" data-cat="${category}">…or save as a new ${isMob ? 'routine' : 'program'}</button>` : ''}` : ''}`;
 }
 
-// Inline editor for one session entry (edit weight / sets / reps / effort).
+// Inline editor for one session entry — name, description, muscles, and the
+// weight / sets / reps / effort.
 function entryEditor(e, i) {
   const amtLabel = e.unit === 'seconds' ? 'Seconds' : 'Reps';
   const amtVal = e.unit === 'seconds' ? e.seconds : e.reps;
   return `<div class="sess-row editing"><div class="entry-editor">
-    <div class="sess-name">${esc(e.name)}</div>
+    <label class="field"><span>Name</span><input id="edit-name" type="text" maxlength="44" value="${esc(e.name)}"></label>
+    <label class="field"><span>Description / how-to <span class="muted-note">(one step per line)</span></span><textarea id="edit-desc" class="ta" rows="4" maxlength="1000" placeholder="Optional notes / steps…">${esc(e.desc || '')}</textarea></label>
     <div class="gym-row">
       <label class="field"><span>Weight (kg)</span><input id="edit-weight" type="number" min="0" step="0.5" value="${e.weight || ''}" placeholder="opt."></label>
       <label class="field"><span>Sets</span><input id="edit-sets" type="number" min="1" step="1" value="${e.sets}"></label>
       <label class="field"><span>${amtLabel}</span><input id="edit-amt" type="number" min="1" step="1" value="${amtVal}"></label>
     </div>
-    <div class="effort-row" id="edit-effort-row">${EFFORT_LEVELS.map(l => `<button type="button" class="effort-pill ${ui.editEffort === l.id ? 'on' : ''}" data-action="set-edit-effort" data-effort="${l.id}">${l.label}</button>`).join('')}</div>
-    <div class="two-btn"><button class="btn-ghost" data-action="cancel-edit">Cancel</button><button class="btn-primary" data-action="commit-edit" data-i="${i}">Save</button></div>
+    <div class="field"><span>Effort</span>
+      <div class="effort-row" id="edit-effort-row">${EFFORT_LEVELS.map(l => `<button type="button" class="effort-pill ${ui.editEffort === l.id ? 'on' : ''}" data-action="set-edit-effort" data-effort="${l.id}">${l.label}</button>`).join('')}</div>
+    </div>
+    <div class="field"><span>Muscles worked <span class="muted-note">(tap to cycle: off → primary → secondary)</span></span>
+      <div class="muscle-grid">${MUSCLE_IDS.map(m => `<button type="button" class="mtag ${ui.editMuscles[m] || ''}" data-action="cycle-edit-muscle" data-m="${m}">${muscleName(m)}</button>`).join('')}</div>
+    </div>
+    <div class="two-btn"><button class="btn-ghost" data-action="cancel-edit">Cancel</button><button class="btn-primary" data-action="commit-edit" data-i="${i}">Save changes</button></div>
   </div></div>`;
 }
 
@@ -935,7 +942,10 @@ async function onClick(e) {
     }
     case 'edit-entry': {
       ui.editingIndex = parseInt(t.dataset.i);
-      ui.editEffort = ui.session[ui.editingIndex]?.effort || 'hard';
+      const ent = ui.session[ui.editingIndex] || {};
+      ui.editEffort = ent.effort || 'hard';
+      ui.editMuscles = {};
+      for (const [m, w] of Object.entries(ent.muscles || {})) ui.editMuscles[m] = w >= 0.6 ? 'primary' : 'secondary';
       render();
       break;
     }
@@ -943,14 +953,26 @@ async function onClick(e) {
       ui.editEffort = t.dataset.effort;
       document.querySelectorAll('#edit-effort-row .effort-pill').forEach(p => p.classList.toggle('on', p.dataset.effort === ui.editEffort));
       break;
+    case 'cycle-edit-muscle': {
+      const m = t.dataset.m, cur = ui.editMuscles[m];
+      const next = cur === undefined ? 'primary' : cur === 'primary' ? 'secondary' : undefined;
+      if (next) ui.editMuscles[m] = next; else delete ui.editMuscles[m];
+      t.className = 'mtag ' + (next || '');
+      break;
+    }
     case 'cancel-edit': ui.editingIndex = null; render(); break;
     case 'commit-edit': {
       const e = ui.session[parseInt(t.dataset.i)]; if (!e) break;
+      e.name = document.getElementById('edit-name').value.trim() || e.name;
+      e.desc = document.getElementById('edit-desc').value.trim();
       e.sets = Math.max(1, parseInt(document.getElementById('edit-sets').value) || 0);
       const amt = Math.max(1, parseInt(document.getElementById('edit-amt').value) || 0);
       if (e.unit === 'seconds') e.seconds = amt; else e.reps = amt;
       e.weight = parseFloat(document.getElementById('edit-weight').value) || 0;
       e.effort = ui.editEffort;
+      const muscles = {};
+      for (const [m, st] of Object.entries(ui.editMuscles || {})) muscles[m] = st === 'primary' ? 1.0 : 0.5;
+      e.muscles = muscles;
       ui.editingIndex = null;
       render();
       break;

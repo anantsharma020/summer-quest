@@ -3,7 +3,9 @@
 //
 // When SUPABASE_URL / SUPABASE_ANON_KEY are set in config.js, this enables
 // email/password accounts and syncs the user's whole app-state blob to a
-// per-user row in the `user_data` table (protected by row-level security).
+// per-user row in the `summerquest_user_state` table (protected by row-level
+// security). The table is namespaced so it never collides with other apps
+// sharing the same Supabase project. See supabase/schema.sql.
 // When unset, every function is a safe no-op and the app stays local-only.
 //
 // supabase-js is only loaded (from a CDN) when sync is actually configured, so
@@ -53,16 +55,16 @@ export async function signOut() {
 export async function pullData() {
   const c = await client(); if (!c) return null;
   const u = await currentUser(); if (!u) return null;
-  const { data, error } = await c.from('user_data').select('data').eq('user_id', u.id).maybeSingle();
+  const { data, error } = await c.from('summerquest_user_state').select('state').eq('user_id', u.id).maybeSingle();
   if (error) throw error;
-  return data ? data.data : null;
+  return data ? data.state : null;
 }
 
 // Upsert this user's blob.
 export async function pushData(blob) {
   const c = await client(); if (!c) return;
   const u = await currentUser(); if (!u) return;
-  const { error } = await c.from('user_data')
-    .upsert({ user_id: u.id, data: blob, updated_at: new Date().toISOString() });
+  const { error } = await c.from('summerquest_user_state')
+    .upsert({ user_id: u.id, state: blob, updated_at: new Date().toISOString() });
   if (error) throw error;
 }

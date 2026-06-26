@@ -66,6 +66,8 @@ html[data-theme="dark"] {
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* Ensure text fields stay selectable/pasteable inside the installed PWA. */
+input, textarea, select { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 html, body { margin: 0; padding: 0; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
