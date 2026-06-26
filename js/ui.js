@@ -41,7 +41,7 @@ const ui = {
   session: [], sessionName: '', gymEffort: 'hard', customUnit: 'reps',
   customMuscles: {}, addMode: 'list', qaMusclesOpen: false,
   editingIndex: null, editEffort: 'hard', editMuscles: {}, loadedProgramId: null,
-  logDate: dayKey(), follow: null,
+  sessionCat: 'gym', logDate: dayKey(), follow: null,
   backupView: null, backupText: '',
 };
 
@@ -97,6 +97,12 @@ function logSession(entries, name, category, date) {
     minutes: gymSessionMinutes(norm), icon, label: name, metric: null,
     createdAt: dateToCreatedAt(date), date,
   }).then(() => celebrate(xp, dayRating(xpForDay(S.get().quests, S.get().logs, dayKey()))));
+}
+
+// When a saved program is open, persist edits to it immediately so changes to
+// names / descriptions / muscles / weights stick without a separate step.
+async function autosaveProgram() {
+  if (ui.loadedProgramId) await S.updateProgram(ui.loadedProgramId, ui.sessionName, ui.session.map(e => ({ ...e })));
 }
 
 function startFollow(entries, name, category) {
@@ -489,14 +495,12 @@ function screenGym(typeTabs, category = 'gym') {
 
   ${entries.length ? `
   <div class="card log-form" style="margin-top:14px">${dateField()}</div>
+  ${ui.loadedProgramId ? `<div class="muted-note" style="text-align:center;margin:0 0 10px">✓ Edits save to “${esc(ui.sessionName)}” automatically</div>` : ''}
   <div class="quest-actions">
     <button class="btn-ghost" data-action="follow-session" data-cat="${category}">▶ Start &amp; follow along</button>
-    ${ui.loadedProgramId
-      ? `<button class="btn-ghost" data-action="update-program">★ Update “${esc(ui.sessionName)}”</button>`
-      : `<button class="btn-ghost" data-action="save-program" data-cat="${category}">★ Save as ${isMob ? 'routine' : 'program'}</button>`}
+    <button class="btn-ghost" data-action="save-program" data-cat="${category}">${ui.loadedProgramId ? '＋ Save as a copy' : `★ Save as ${isMob ? 'routine' : 'program'}`}</button>
     <button class="btn-primary big" data-action="log-session" data-cat="${category}">Log it now (+${total} XP)</button>
-  </div>
-  ${ui.loadedProgramId ? `<button class="link-btn" data-action="save-program" data-cat="${category}">…or save as a new ${isMob ? 'routine' : 'program'}</button>` : ''}` : ''}`;
+  </div>` : ''}`;
 }
 
 // Inline editor for one session entry — name, description, muscles, and the
@@ -529,6 +533,13 @@ function screenLog() {
     logInitType = ui.logType;
     ui.addMode = ui.logType === 'mobility' ? 'custom' : 'list';
     ui.editingIndex = null;
+    // The working session belongs to one category — switching between the
+    // gym and mobility builders starts a fresh session for that tab (the
+    // loaded program stays saved and can be re-opened from its own tab).
+    const newCat = ui.logType === 'mobility' ? 'mobility' : (ui.logType === 'gym' ? 'gym' : null);
+    if (newCat && ui.sessionCat !== newCat) {
+      ui.session = []; ui.sessionName = ''; ui.loadedProgramId = null; ui.sessionCat = newCat;
+    }
   }
   const type = ui.logType;
   const isSport = type === 'sport';
@@ -538,7 +549,7 @@ function screenLog() {
 
   const typeTabs = LOG_TABS.map(t => {
     const m = logTabMeta(t);
-    return `<button class="logtab ${type === t ? 'on' : ''}" data-action="set-log-type" data-type="${t}"><span>${m.icon}</span>${m.name}</button>`;
+    return `<a class="logtab ${type === t ? 'on' : ''}" href="#/log?type=${t}"><span>${m.icon}</span>${m.name}</a>`;
   }).join('');
 
   if (isGym) return screenGym(typeTabs, 'gym');
@@ -900,10 +911,11 @@ async function onClick(e) {
       const amt = parseInt(document.getElementById('gym-amt').value) || 0;
       const weight = parseFloat(document.getElementById('gym-weight').value) || 0;
       ui.session.push(buildEntry(gx, weight, sets, amt, ui.gymEffort));
+      await autosaveProgram();
       render();
       break;
     }
-    case 'remove-entry': ui.session.splice(parseInt(t.dataset.i), 1); if (ui.editingIndex !== null) ui.editingIndex = null; render(); break;
+    case 'remove-entry': ui.session.splice(parseInt(t.dataset.i), 1); if (ui.editingIndex !== null) ui.editingIndex = null; await autosaveProgram(); render(); break;
     case 'set-add-mode': ui.addMode = t.dataset.mode; render(); break;
     case 'toggle-qa-muscles': {
       ui.qaMusclesOpen = !ui.qaMusclesOpen;
@@ -937,6 +949,7 @@ async function onClick(e) {
       ui.session.push(buildFreeEntry(name, desc, ui.customUnit, sets, amt, weight, ui.gymEffort, muscles));
       if (document.getElementById('qa-save')?.checked) { await S.addCustomExercise({ name, muscles, unit: ui.customUnit }); }
       ui.customMuscles = {}; ui.qaMusclesOpen = false;
+      await autosaveProgram();
       render();
       break;
     }
@@ -974,12 +987,13 @@ async function onClick(e) {
       for (const [m, st] of Object.entries(ui.editMuscles || {})) muscles[m] = st === 'primary' ? 1.0 : 0.5;
       e.muscles = muscles;
       ui.editingIndex = null;
+      await autosaveProgram();
       render();
       break;
     }
     case 'load-program': {
       const p = S.get().programs.find(x => x.id === t.dataset.id);
-      if (p) { ui.session = p.exercises.map(e => ({ ...e })); ui.sessionName = p.name; ui.loadedProgramId = p.id; ui.editingIndex = null; render(); }
+      if (p) { ui.session = p.exercises.map(e => ({ ...e })); ui.sessionName = p.name; ui.loadedProgramId = p.id; ui.sessionCat = p.category || 'gym'; ui.editingIndex = null; render(); }
       break;
     }
     case 'load-preset': {
@@ -988,7 +1002,7 @@ async function onClick(e) {
         ui.session = preset.exercises
           .map(e => { const gx = gymExerciseById(e.ref); return gx ? buildEntry(gx, e.weight, e.sets, e.reps ?? e.seconds, e.effort) : null; })
           .filter(Boolean);
-        ui.sessionName = preset.name; ui.loadedProgramId = null; ui.editingIndex = null;
+        ui.sessionName = preset.name; ui.loadedProgramId = null; ui.sessionCat = 'gym'; ui.editingIndex = null;
         render();
       }
       break;
