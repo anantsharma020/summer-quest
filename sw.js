@@ -1,11 +1,12 @@
 // Service worker: network-first so updates arrive automatically on the next
 // launch (no reinstall needed); falls back to cache when offline.
-const CACHE = 'summer-quest-v11';
+const CACHE = 'summer-quest-v12';
 const ASSETS = [
   './', './index.html', './pitch.html', './styles.css', './manifest.webmanifest',
   './icon.svg', './icon-maskable.svg',
   './js/main.js', './js/ui.js', './js/ui-svg.js', './js/state.js',
   './js/engine.js', './js/db.js', './js/data.js', './js/howto.js', './js/media.js',
+  './js/sync.js', './js/config.js',
 ];
 
 self.addEventListener('install', (e) => {

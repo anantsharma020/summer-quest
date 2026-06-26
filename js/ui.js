@@ -694,6 +694,17 @@ function screenProfile() {
   </div>
   ${profileForm(p, false)}
 
+  ${S.syncConfigured() ? `<div class="section-title">Account</div>
+  <div class="card log-form">
+    ${S.get().user
+      ? `<p class="muted-note">Signed in as <strong>${esc(S.get().user.email)}</strong>. Your progress syncs automatically — log in on any device to get it back.</p>
+         <button class="btn-ghost" data-action="auth-signout">Log out</button>`
+      : `<p class="muted-note">Create an account (or log in) to sync your progress to the cloud so it survives reinstalls and works across devices.</p>
+         <label class="field"><span>Email</span><input id="auth-email" type="email" autocomplete="email" placeholder="you@example.com"></label>
+         <label class="field"><span>Password</span><input id="auth-pw" type="password" autocomplete="current-password" placeholder="at least 6 characters"></label>
+         <div class="two-btn"><button class="btn-ghost" data-action="auth-signup">Create account</button><button class="btn-primary" data-action="auth-signin">Log in</button></div>`}
+  </div>` : ''}
+
   <div class="section-title">Appearance</div>
   <div class="card">
     <div class="seg">
@@ -1005,6 +1016,28 @@ async function onClick(e) {
     case 'create-profile': await saveProfile(true); break;
     case 'update-profile': await saveProfile(false); break;
     case 'set-theme': await S.setTheme(t.dataset.theme); break;
+
+    case 'auth-signin': {
+      const email = document.getElementById('auth-email').value.trim();
+      const pw = document.getElementById('auth-pw').value;
+      if (!email || !pw) { toast('Enter your email and password'); break; }
+      try { await S.signInUser(email, pw); toast('Logged in — your data is synced'); location.hash = '#/home'; }
+      catch (e) { toast(e.message || 'Login failed'); }
+      break;
+    }
+    case 'auth-signup': {
+      const email = document.getElementById('auth-email').value.trim();
+      const pw = document.getElementById('auth-pw').value;
+      if (!email || !pw) { toast('Enter your email and password'); break; }
+      if (pw.length < 6) { toast('Password must be at least 6 characters'); break; }
+      try {
+        const { needsConfirm } = await S.signUpUser(email, pw);
+        toast(needsConfirm ? 'Check your email to confirm, then log in' : 'Account created — syncing enabled');
+        if (!needsConfirm) location.hash = '#/home'; else render();
+      } catch (e) { toast(e.message || 'Sign up failed'); }
+      break;
+    }
+    case 'auth-signout': await S.signOutUser(); toast('Logged out'); break;
 
     case 'backup-export':
       ui.backupText = JSON.stringify(await S.exportData());

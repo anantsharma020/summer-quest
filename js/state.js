@@ -5,6 +5,7 @@
 // ============================================================================
 
 import * as db from './db.js';
+import * as sync from './sync.js';
 import { dayKey } from './engine.js';
 
 const state = {
@@ -15,17 +16,20 @@ const state = {
   customExercises: [],
   programs: [],
   theme: 'light',
+  user: null,
+  syncing: false,
   ready: false,
 };
 
 const subs = new Set();
 export const subscribe = (cb) => { subs.add(cb); return () => subs.delete(cb); };
-const emit = () => subs.forEach(cb => cb());
+const emit = () => { subs.forEach(cb => cb()); schedulePush(); };
 
 export const get = () => state;
 export const activeProfile = () => state.profiles.find(p => p.id === state.activeId) || null;
+export const syncConfigured = () => sync.syncConfigured();
 
-export async function init() {
+async function loadAll() {
   state.profiles = await db.getAll('profiles');
   state.activeId = await db.getMeta('activeProfileId', null);
   if (state.activeId && !state.profiles.find(p => p.id === state.activeId)) state.activeId = null;
@@ -34,7 +38,75 @@ export async function init() {
   state.theme = await db.getMeta('theme', 'light');
   document.documentElement.dataset.theme = state.theme;
   await loadHistory();
+}
+
+export async function init() {
+  await loadAll();
   state.ready = true;
+  emit();
+  initSync(); // non-blocking
+}
+
+// ---- cloud sync ------------------------------------------------------------
+async function initSync() {
+  if (!sync.syncConfigured()) return;
+  try {
+    const user = await sync.currentUser();
+    state.user = user;
+    if (user) await reconcileWithCloud();
+    emit();
+  } catch (e) { console.warn('Cloud sync init failed:', e.message); }
+}
+
+// On login/startup: if the cloud has data, use it; otherwise seed it with what
+// is on this device.
+async function reconcileWithCloud() {
+  const remote = await sync.pullData();
+  if (remote && Array.isArray(remote.profiles) && remote.profiles.length) {
+    await applyBlob(remote);
+  } else {
+    await sync.pushData(await exportData());
+  }
+}
+
+async function applyBlob(blob) {
+  for (const p of blob.profiles || []) await db.put('profiles', p);
+  for (const q of blob.quests || []) await db.put('quests', q);
+  for (const l of blob.logs || []) await db.put('logs', l);
+  for (const pr of blob.programs || []) await db.put('programs', pr);
+  for (const c of blob.customExercises || []) await db.put('customExercises', c);
+  if (blob.activeProfileId) await db.setMeta('activeProfileId', blob.activeProfileId);
+  await loadAll();
+}
+
+let pushTimer = null;
+function schedulePush() {
+  if (!sync.syncConfigured() || !state.user) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(async () => {
+    try { await sync.pushData(await exportData()); } catch (e) { console.warn('Cloud push failed:', e.message); }
+  }, 2000);
+}
+
+export async function signUpUser(email, password) {
+  const { user } = await sync.signUp(email, password);
+  state.user = await sync.currentUser();
+  if (state.user) await sync.pushData(await exportData());
+  emit();
+  return { user, needsConfirm: !state.user };
+}
+
+export async function signInUser(email, password) {
+  await sync.signIn(email, password);
+  state.user = await sync.currentUser();
+  state.syncing = true; emit();
+  if (state.user) await reconcileWithCloud();
+  state.syncing = false; emit();
+}
+
+export async function signOutUser() {
+  await sync.signOut();
+  state.user = null;
   emit();
 }
 
