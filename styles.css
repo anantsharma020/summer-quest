@@ -233,6 +233,19 @@ body {
 .sess-total { text-align: right; padding-top: 12px; font-size: 15px; color: var(--muted); }
 .sess-total strong { color: var(--accent); font-size: 17px; }
 
+/* add-mode segmented toggle */
+.seg { display: flex; gap: 6px; background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
+.seg-btn { flex: 1; background: none; border: none; color: var(--muted); font: inherit; font-size: 14px; font-weight: 700; padding: 9px; border-radius: 9px; cursor: pointer; }
+.seg-btn.on { background: var(--card2); color: var(--fg); }
+.checkrow { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.checkrow input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* session entry: description + inline editor */
+.sess-desc { color: var(--dim, #7e92b2); font-size: 12.5px; margin-top: 3px; line-height: 1.4; }
+.sess-row.editing { display: block; padding: 12px 0; }
+.entry-editor { display: flex; flex-direction: column; gap: 12px; }
+.entry-editor .sess-name { font-size: 15px; }
+
 /* custom exercise creator */
 .custom-form { border-top: 1px dashed var(--line); margin-top: 6px; padding-top: 14px; display: flex; flex-direction: column; gap: 14px; }
 .muscle-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }

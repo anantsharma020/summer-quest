@@ -39,9 +39,22 @@ const ui = {
   selectedTier: 'standard', logType: 'swim', sport: 'volleyball', creatingProfile: false,
   // gym session builder
   session: [], sessionName: '', gymEffort: 'hard', customUnit: 'reps',
-  customOpen: false, customMuscles: {},
+  customMuscles: {}, addMode: 'list', qaMusclesOpen: false,
+  editingIndex: null, editEffort: 'hard', loadedProgramId: null,
   backupView: null, backupText: '',
 };
+
+// Build a free / typed-in session entry (custom move or mobility step). No
+// catalog needed; muscles are optional (empty = mobility/recovery).
+function buildFreeEntry(name, desc, unit, sets, amt, weight, effort, muscles) {
+  return {
+    ref: null, name, desc: desc || '', muscles: muscles || {}, unit,
+    sets: Math.max(1, sets || 0),
+    reps: unit === 'reps' ? Math.max(1, amt || 0) : undefined,
+    seconds: unit === 'seconds' ? Math.max(1, amt || 0) : undefined,
+    weight: weight || 0, effort,
+  };
+}
 
 // Build a gym session entry from the add-form inputs / a catalog exercise.
 function buildEntry(gx, weight, sets, amt, effort) {
@@ -286,17 +299,29 @@ function screenQuest() {
   `;
 }
 
-function customExerciseForm() {
-  return `<div class="custom-form">
-    <label class="field"><span>New exercise name</span><input id="custom-name" type="text" maxlength="40" placeholder="e.g. Pec Deck Fly"></label>
-    <div class="field"><span>Muscles worked — tap to cycle: off → primary → secondary</span>
-      <div class="muscle-grid">${MUSCLE_IDS.map(m => `<button type="button" class="mtag ${ui.customMuscles[m] || ''}" data-action="cycle-muscle" data-m="${m}">${muscleName(m)}</button>`).join('')}</div>
-    </div>
+// Quick-add: type any move (a gym exercise that isn't listed, or a mobility /
+// stretch step) straight into the session. Muscle tags are optional.
+function quickAddForm() {
+  const amtLabel = ui.customUnit === 'seconds' ? 'Seconds' : 'Reps';
+  return `
+    <label class="field"><span>Name</span><input id="qa-name" type="text" maxlength="44" placeholder="e.g. World's Greatest Stretch"></label>
+    <label class="field"><span>Description / how-to <span class="muted-note">(optional)</span></span><input id="qa-desc" type="text" maxlength="120" placeholder="e.g. Deep lunge, rotate up, hold and breathe"></label>
     <div class="field"><span>Measured in</span>
       <div class="effort-row">${['reps', 'seconds'].map(u => `<button type="button" class="effort-pill ${ui.customUnit === u ? 'on' : ''}" data-action="set-custom-unit" data-u="${u}">${u === 'reps' ? 'Reps' : 'Seconds (hold)'}</button>`).join('')}</div>
     </div>
-    <button class="btn-primary" data-action="create-custom">Create exercise</button>
-  </div>`;
+    <div class="gym-row">
+      <label class="field"><span>Weight (kg)</span><input id="qa-weight" type="number" min="0" step="0.5" placeholder="opt."></label>
+      <label class="field"><span>Sets</span><input id="qa-sets" type="number" min="1" step="1" value="3"></label>
+      <label class="field"><span id="qa-amt-label">${amtLabel}</span><input id="qa-amt" type="number" min="1" step="1" value="${ui.customUnit === 'seconds' ? 30 : 10}"></label>
+    </div>
+    <div class="field"><span>Effort</span>
+      <div class="effort-row" id="effort-row">${EFFORT_LEVELS.map(l => `<button type="button" class="effort-pill ${ui.gymEffort === l.id ? 'on' : ''}" data-action="set-effort" data-effort="${l.id}">${l.label}</button>`).join('')}</div>
+    </div>
+    <button class="link-btn" data-action="toggle-qa-muscles">${ui.qaMusclesOpen ? 'Hide muscle tags' : 'Tag muscle groups (optional)'}</button>
+    ${ui.qaMusclesOpen ? `<div class="muscle-grid">${MUSCLE_IDS.map(m => `<button type="button" class="mtag ${ui.customMuscles[m] || ''}" data-action="cycle-muscle" data-m="${m}">${muscleName(m)}</button>`).join('')}</div>` : ''}
+    <p class="muted-note">No tags = treated as <strong>mobility / recovery</strong>: earns XP but adds no muscle fatigue. Tag muscles to make it count toward those groups.</p>
+    <label class="checkrow"><input type="checkbox" id="qa-save"> Also save to my exercises for next time</label>
+    <button class="btn-primary big" data-action="add-free">＋ Add to session</button>`;
 }
 
 function screenGym(typeTabs) {
@@ -313,11 +338,15 @@ function screenGym(typeTabs) {
   ${programs.length ? `<div class="section-title">Your programs</div>
     <div class="prog-chips">${programs.map(p => `<button class="prog-chip" data-action="load-program" data-id="${p.id}">${esc(p.name)} <span>${p.exercises.length}</span></button>`).join('')}</div>` : ''}
 
-  <div class="section-title">${ui.sessionName ? esc(ui.sessionName) : 'Session'}</div>
+  <div class="section-title">${ui.sessionName ? esc(ui.sessionName) : 'Session'}${ui.loadedProgramId ? ' <span class="muted-note">· editing saved program</span>' : ''}</div>
   <div class="card">
-    ${entries.length ? entries.map((e, i) => `
+    ${entries.length ? entries.map((e, i) => ui.editingIndex === i ? entryEditor(e, i) : `
       <div class="sess-row">
-        <div class="sess-body"><div class="sess-name">${esc(e.name)}</div><div class="sess-meta">${gymEntryMeta(e)}</div></div>
+        <div class="sess-body" data-action="edit-entry" data-i="${i}">
+          <div class="sess-name">${esc(e.name)} <span class="ex-info">✎</span></div>
+          <div class="sess-meta">${gymEntryMeta(e)}</div>
+          ${e.desc ? `<div class="sess-desc">${esc(e.desc)}</div>` : ''}
+        </div>
         <div class="sess-xp">+${gymEntryXp(e)}</div>
         <button class="sess-x" data-action="remove-entry" data-i="${i}">✕</button>
       </div>`).join('') : '<div class="muted-note">No exercises yet — add your first below.</div>'}
@@ -326,6 +355,11 @@ function screenGym(typeTabs) {
 
   <div class="section-title">Add exercise</div>
   <div class="card log-form">
+    <div class="seg">
+      <button class="seg-btn ${ui.addMode === 'list' ? 'on' : ''}" data-action="set-add-mode" data-mode="list">From list</button>
+      <button class="seg-btn ${ui.addMode === 'custom' ? 'on' : ''}" data-action="set-add-mode" data-mode="custom">Type your own</button>
+    </div>
+    ${ui.addMode === 'list' ? `
     <label class="field"><span>Exercise</span>
       <input id="gym-name" list="gym-list" placeholder="e.g. Dumbbell Chest Press" autocomplete="off" data-live>
       <datalist id="gym-list">${gymCatalog().map(g => `<option value="${esc(g.name)}"></option>`).join('')}</datalist>
@@ -341,14 +375,32 @@ function screenGym(typeTabs) {
     </div>
     <div class="xp-preview">This exercise: <strong id="xp-preview">+0</strong> XP</div>
     <button class="btn-primary big" data-action="add-entry">＋ Add to session</button>
-    <button class="link-btn" data-action="toggle-custom">${ui.customOpen ? 'Cancel custom exercise' : "Can't find it? Create a custom exercise"}</button>
-    ${ui.customOpen ? customExerciseForm() : ''}
+    ` : quickAddForm()}
   </div>
 
   ${entries.length ? `<div class="quest-actions">
-    <button class="btn-ghost" data-action="save-program">★ Save as program</button>
+    ${ui.loadedProgramId
+      ? `<button class="btn-ghost" data-action="update-program">★ Update “${esc(ui.sessionName)}”</button>`
+      : `<button class="btn-ghost" data-action="save-program">★ Save as program</button>`}
     <button class="btn-primary big" data-action="log-session">Log session (+${total} XP)</button>
-  </div>` : ''}`;
+  </div>
+  ${ui.loadedProgramId ? `<button class="link-btn" data-action="save-program">…or save as a new program</button>` : ''}` : ''}`;
+}
+
+// Inline editor for one session entry (edit weight / sets / reps / effort).
+function entryEditor(e, i) {
+  const amtLabel = e.unit === 'seconds' ? 'Seconds' : 'Reps';
+  const amtVal = e.unit === 'seconds' ? e.seconds : e.reps;
+  return `<div class="sess-row editing"><div class="entry-editor">
+    <div class="sess-name">${esc(e.name)}</div>
+    <div class="gym-row">
+      <label class="field"><span>Weight (kg)</span><input id="edit-weight" type="number" min="0" step="0.5" value="${e.weight || ''}" placeholder="opt."></label>
+      <label class="field"><span>Sets</span><input id="edit-sets" type="number" min="1" step="1" value="${e.sets}"></label>
+      <label class="field"><span>${amtLabel}</span><input id="edit-amt" type="number" min="1" step="1" value="${amtVal}"></label>
+    </div>
+    <div class="effort-row" id="edit-effort-row">${EFFORT_LEVELS.map(l => `<button type="button" class="effort-pill ${ui.editEffort === l.id ? 'on' : ''}" data-action="set-edit-effort" data-effort="${l.id}">${l.label}</button>`).join('')}</div>
+    <div class="two-btn"><button class="btn-ghost" data-action="cancel-edit">Cancel</button><button class="btn-primary" data-action="commit-edit" data-i="${i}">Save</button></div>
+  </div></div>`;
 }
 
 function screenLog() {
@@ -696,8 +748,9 @@ async function onClick(e) {
       render();
       break;
     }
-    case 'remove-entry': ui.session.splice(parseInt(t.dataset.i), 1); render(); break;
-    case 'toggle-custom': ui.customOpen = !ui.customOpen; render(); break;
+    case 'remove-entry': ui.session.splice(parseInt(t.dataset.i), 1); if (ui.editingIndex !== null) ui.editingIndex = null; render(); break;
+    case 'set-add-mode': ui.addMode = t.dataset.mode; render(); break;
+    case 'toggle-qa-muscles': ui.qaMusclesOpen = !ui.qaMusclesOpen; render(); break;
     case 'cycle-muscle': {
       const m = t.dataset.m, cur = ui.customMuscles[m];
       const next = cur === undefined ? 'primary' : cur === 'primary' ? 'secondary' : undefined;
@@ -705,26 +758,52 @@ async function onClick(e) {
       t.className = 'mtag ' + (next || '');
       break;
     }
-    case 'set-custom-unit':
+    case 'set-custom-unit': {
       ui.customUnit = t.dataset.u;
-      document.querySelectorAll('.custom-form .effort-pill').forEach(p => p.classList.toggle('on', p.dataset.u === ui.customUnit));
+      document.querySelectorAll('[data-action="set-custom-unit"]').forEach(p => p.classList.toggle('on', p.dataset.u === ui.customUnit));
+      const lbl = document.getElementById('qa-amt-label'); if (lbl) lbl.textContent = ui.customUnit === 'seconds' ? 'Seconds' : 'Reps';
       break;
-    case 'create-custom': {
-      const name = document.getElementById('custom-name').value.trim();
+    }
+    case 'add-free': {
+      const name = document.getElementById('qa-name').value.trim();
+      if (!name) { toast('Give it a name'); break; }
+      const desc = document.getElementById('qa-desc').value.trim();
+      const sets = parseInt(document.getElementById('qa-sets').value) || 0;
+      const amt = parseInt(document.getElementById('qa-amt').value) || 0;
+      const weight = parseFloat(document.getElementById('qa-weight').value) || 0;
       const muscles = {};
       for (const [m, st] of Object.entries(ui.customMuscles)) muscles[m] = st === 'primary' ? 1.0 : 0.5;
-      if (!name) { toast('Name your exercise'); break; }
-      if (!Object.keys(muscles).length) { toast('Tap at least one muscle'); break; }
-      const ex = await S.addCustomExercise({ name, muscles, unit: ui.customUnit });
-      ui.customOpen = false; ui.customMuscles = {}; ui.customUnit = 'reps';
+      ui.session.push(buildFreeEntry(name, desc, ui.customUnit, sets, amt, weight, ui.gymEffort, muscles));
+      if (document.getElementById('qa-save')?.checked) { await S.addCustomExercise({ name, muscles, unit: ui.customUnit }); }
+      ui.customMuscles = {}; ui.qaMusclesOpen = false;
       render();
-      setTimeout(() => { const el = document.getElementById('gym-name'); if (el) { el.value = ex.name; updateLogPreview(); } }, 0);
-      toast(`Added "${ex.name}" to your exercises`);
+      break;
+    }
+    case 'edit-entry': {
+      ui.editingIndex = parseInt(t.dataset.i);
+      ui.editEffort = ui.session[ui.editingIndex]?.effort || 'hard';
+      render();
+      break;
+    }
+    case 'set-edit-effort':
+      ui.editEffort = t.dataset.effort;
+      document.querySelectorAll('#edit-effort-row .effort-pill').forEach(p => p.classList.toggle('on', p.dataset.effort === ui.editEffort));
+      break;
+    case 'cancel-edit': ui.editingIndex = null; render(); break;
+    case 'commit-edit': {
+      const e = ui.session[parseInt(t.dataset.i)]; if (!e) break;
+      e.sets = Math.max(1, parseInt(document.getElementById('edit-sets').value) || 0);
+      const amt = Math.max(1, parseInt(document.getElementById('edit-amt').value) || 0);
+      if (e.unit === 'seconds') e.seconds = amt; else e.reps = amt;
+      e.weight = parseFloat(document.getElementById('edit-weight').value) || 0;
+      e.effort = ui.editEffort;
+      ui.editingIndex = null;
+      render();
       break;
     }
     case 'load-program': {
       const p = S.get().programs.find(x => x.id === t.dataset.id);
-      if (p) { ui.session = p.exercises.map(e => ({ ...e })); ui.sessionName = p.name; render(); }
+      if (p) { ui.session = p.exercises.map(e => ({ ...e })); ui.sessionName = p.name; ui.loadedProgramId = p.id; ui.editingIndex = null; render(); }
       break;
     }
     case 'load-preset': {
@@ -733,7 +812,7 @@ async function onClick(e) {
         ui.session = preset.exercises
           .map(e => { const gx = gymExerciseById(e.ref); return gx ? buildEntry(gx, e.weight, e.sets, e.reps ?? e.seconds, e.effort) : null; })
           .filter(Boolean);
-        ui.sessionName = preset.name;
+        ui.sessionName = preset.name; ui.loadedProgramId = null; ui.editingIndex = null;
         render();
       }
       break;
@@ -742,19 +821,27 @@ async function onClick(e) {
       if (!ui.session.length) break;
       const name = (prompt('Name this program', ui.sessionName || 'My Program') || '').trim();
       if (!name) break;
-      await S.saveProgram(name, ui.session.map(e => ({ ...e })));
-      ui.sessionName = name;
+      const rec = await S.saveProgram(name, ui.session.map(e => ({ ...e })));
+      ui.sessionName = name; ui.loadedProgramId = rec.id;
       toast('Program saved');
+      render();
+      break;
+    }
+    case 'update-program': {
+      if (!ui.loadedProgramId || !ui.session.length) break;
+      await S.updateProgram(ui.loadedProgramId, ui.sessionName, ui.session.map(e => ({ ...e })));
+      toast('Program updated');
       render();
       break;
     }
     case 'log-session': {
       if (!ui.session.length) break;
-      const name = ui.sessionName || 'Gym session';
+      const name = ui.sessionName || 'Session';
       const entries = ui.session.map(e => ({ ...e, xp: gymEntryXp(e) }));
       const xp = gymSessionXp(entries);
-      await S.addLog({ kind: 'gym', subtype: 'session', name, entries, xp, minutes: gymSessionMinutes(entries), icon: '🏋️', label: name, metric: null });
-      ui.session = []; ui.sessionName = '';
+      const anyMuscle = entries.some(e => Object.keys(e.muscles || {}).length);
+      await S.addLog({ kind: 'gym', subtype: 'session', name, entries, xp, minutes: gymSessionMinutes(entries), icon: anyMuscle ? '🏋️' : '🧘', label: name, metric: null });
+      ui.session = []; ui.sessionName = ''; ui.loadedProgramId = null; ui.editingIndex = null;
       celebrate(xp, dayRating(xpForDay(S.get().quests, S.get().logs, dayKey())));
       location.hash = '#/home';
       break;
@@ -850,6 +937,6 @@ export function bindEvents() {
     if (e.target.closest('[data-live]') && route().startsWith('/log')) updateLogPreview();
     if (e.target.classList.contains('pf-equip')) e.target.closest('.equip')?.classList.toggle('on', e.target.checked);
   });
-  window.addEventListener('hashchange', () => { ui.creatingProfile = false; ui.backupView = null; render(); });
+  window.addEventListener('hashchange', () => { ui.creatingProfile = false; ui.backupView = null; ui.editingIndex = null; render(); });
   S.subscribe(render);
 }

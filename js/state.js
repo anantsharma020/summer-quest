@@ -59,6 +59,16 @@ export async function saveProgram(name, exercises) {
   return record;
 }
 
+export async function updateProgram(id, name, exercises) {
+  const p = state.programs.find(x => x.id === id);
+  if (!p) return null;
+  p.name = name;
+  p.exercises = exercises;
+  await db.put('programs', p);
+  emit();
+  return p;
+}
+
 export async function deleteProgram(id) {
   await db.del('programs', id);
   state.programs = state.programs.filter(p => p.id !== id);

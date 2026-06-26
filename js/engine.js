@@ -32,8 +32,10 @@ const setVolume = (entry) =>
   entry.unit === 'seconds' ? (entry.seconds || 0) / 5 : (entry.reps || 0);
 
 // XP for one gym entry: effort × recruitment × volume, weight-independent.
+// Untagged (mobility / follow-along) entries have no muscle map, so they get a
+// modest recruitment floor — they still earn XP but add no muscle fatigue.
 export function gymEntryXp(entry) {
-  const R = recruitment(entry.muscles);
+  const R = recruitment(entry.muscles) || 0.6;
   const eff = effortById(entry.effort).xp;
   const repF = entry.unit === 'seconds'
     ? clamp((entry.seconds || 0) / 45, 0.6, 1.6)
