@@ -314,11 +314,11 @@ function screenHome() {
     <button class="btn-primary big" data-action="generate">⚡ Generate Quest</button>
   </div>`}
 
-  <div class="section-title">Start a routine</div>
+  ${(STARTER_PROGRAMS.length || S.get().programs.length) ? `<div class="section-title">Start a routine</div>
   <div class="prog-chips">
     ${STARTER_PROGRAMS.map(p => `<button class="prog-chip preset" data-action="follow-program" data-id="${p.id}">▶ ${esc(p.name)}</button>`).join('')}
     ${S.get().programs.map(p => `<button class="prog-chip" data-action="follow-program" data-id="${p.id}">▶ ${esc(p.name)} <span>${(p.category === 'mobility') ? '🧘' : '🏋️'}</span></button>`).join('')}
-  </div>
+  </div>` : ''}
 
   <div class="section-title">Quick log</div>
   <div class="quick-log">
@@ -430,8 +430,8 @@ function screenGym(typeTabs, category = 'gym') {
   <header class="topbar"><a class="back" href="#/home">←</a><div class="pname">${isMob ? 'Mobility Routine' : 'Gym Session'}</div></header>
   <div class="logtabs">${typeTabs}</div>
 
-  ${isMob ? '' : `<div class="section-title">Starter programs</div>
-  <div class="prog-chips">${STARTER_PROGRAMS.map(p => `<button class="prog-chip preset" data-action="load-preset" data-id="${p.id}">⭐ ${esc(p.name)} <span>${p.exercises.length}</span></button>`).join('')}</div>`}
+  ${(!isMob && STARTER_PROGRAMS.length) ? `<div class="section-title">Starter programs</div>
+  <div class="prog-chips">${STARTER_PROGRAMS.map(p => `<button class="prog-chip preset" data-action="load-preset" data-id="${p.id}">⭐ ${esc(p.name)} <span>${p.exercises.length}</span></button>`).join('')}</div>` : ''}
 
   ${programs.length ? `<div class="section-title">Your ${isMob ? 'mobility routines' : 'programs'}</div>
     <div class="prog-chips">${programs.map(p => `<button class="prog-chip" data-action="load-program" data-id="${p.id}">${esc(p.name)} <span>${p.exercises.length}</span></button>`).join('')}</div>` : ''}
