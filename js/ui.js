@@ -122,6 +122,14 @@ function toggleTimer() {
   render();
 }
 
+// Render a free-typed description: one bullet per non-empty line (so it reads
+// like the built-in exercise how-to), or a single paragraph if it's one line.
+function descHtml(desc, cls = 'follow-desc') {
+  const lines = desc.split('\n').map(s => s.trim()).filter(Boolean);
+  if (lines.length <= 1) return `<div class="${cls}">${esc(desc.trim())}</div>`;
+  return `<ul class="steps follow-steps">${lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>`;
+}
+
 function followMedia(e) {
   if (e.ref && hasPhoto(e.ref)) return exerciseMedia({ id: e.ref, pattern: 'squat', name: e.name });
   const isMob = !(e.muscles && Object.keys(e.muscles).length);
@@ -147,7 +155,7 @@ function screenFollow() {
     <div class="follow-name">${esc(e.name)}</div>
     <div class="follow-target">${targetStr}</div>
     ${Object.keys(e.muscles || {}).length ? `<div class="chips center">${muscleChips(e.muscles)}</div>` : ''}
-    ${e.desc ? `<div class="follow-desc">${esc(e.desc)}</div>` : ''}
+    ${e.desc ? descHtml(e.desc) : ''}
     ${e.unit === 'seconds' ? `
       <div class="follow-timer"><span id="follow-timer-num">${f.remaining != null ? f.remaining : e.seconds}</span><small>sec</small></div>
       <button class="btn-ghost" data-action="follow-timer">${f.running ? '⏸ Pause' : '▶ Start hold'}</button>` : ''}
@@ -402,7 +410,8 @@ function quickAddForm() {
   const amtLabel = ui.customUnit === 'seconds' ? 'Seconds' : 'Reps';
   return `
     <label class="field"><span>Name</span><input id="qa-name" type="text" maxlength="44" placeholder="e.g. World's Greatest Stretch"></label>
-    <label class="field"><span>Description / how-to <span class="muted-note">(optional)</span></span><input id="qa-desc" type="text" maxlength="120" placeholder="e.g. Deep lunge, rotate up, hold and breathe"></label>
+    <label class="field"><span>Description / how-to <span class="muted-note">(optional — one step per line)</span></span>
+      <textarea id="qa-desc" class="ta" rows="5" maxlength="1000" placeholder="Drop into a deep lunge.&#10;Plant the opposite hand, rotate your torso and reach the other arm to the ceiling.&#10;Hold and breathe — you should feel a stretch through your hip and upper back."></textarea></label>
     <div class="field"><span>Measured in</span>
       <div class="effort-row">${['reps', 'seconds'].map(u => `<button type="button" class="effort-pill ${ui.customUnit === u ? 'on' : ''}" data-action="set-custom-unit" data-u="${u}">${u === 'reps' ? 'Reps' : 'Seconds (hold)'}</button>`).join('')}</div>
     </div>
@@ -414,8 +423,8 @@ function quickAddForm() {
     <div class="field"><span>Effort</span>
       <div class="effort-row" id="effort-row">${EFFORT_LEVELS.map(l => `<button type="button" class="effort-pill ${ui.gymEffort === l.id ? 'on' : ''}" data-action="set-effort" data-effort="${l.id}">${l.label}</button>`).join('')}</div>
     </div>
-    <button class="link-btn" data-action="toggle-qa-muscles">${ui.qaMusclesOpen ? 'Hide muscle tags' : 'Tag muscle groups (optional)'}</button>
-    ${ui.qaMusclesOpen ? `<div class="muscle-grid">${MUSCLE_IDS.map(m => `<button type="button" class="mtag ${ui.customMuscles[m] || ''}" data-action="cycle-muscle" data-m="${m}">${muscleName(m)}</button>`).join('')}</div>` : ''}
+    <button class="link-btn" id="qa-mtoggle" data-action="toggle-qa-muscles">${ui.qaMusclesOpen ? 'Hide muscle tags' : 'Tag muscle groups (optional)'}</button>
+    <div class="muscle-grid ${ui.qaMusclesOpen ? '' : 'hidden'}" id="qa-mgrid">${MUSCLE_IDS.map(m => `<button type="button" class="mtag ${ui.customMuscles[m] || ''}" data-action="cycle-muscle" data-m="${m}">${muscleName(m)}</button>`).join('')}</div>
     <p class="muted-note">No tags = treated as <strong>mobility / recovery</strong>: earns XP but adds no muscle fatigue. Tag muscles to make it count toward those groups.</p>
     <label class="checkrow"><input type="checkbox" id="qa-save"> Also save to my exercises for next time</label>
     <button class="btn-primary big" data-action="add-free">＋ Add to session</button>`;
@@ -889,7 +898,13 @@ async function onClick(e) {
     }
     case 'remove-entry': ui.session.splice(parseInt(t.dataset.i), 1); if (ui.editingIndex !== null) ui.editingIndex = null; render(); break;
     case 'set-add-mode': ui.addMode = t.dataset.mode; render(); break;
-    case 'toggle-qa-muscles': ui.qaMusclesOpen = !ui.qaMusclesOpen; render(); break;
+    case 'toggle-qa-muscles': {
+      ui.qaMusclesOpen = !ui.qaMusclesOpen;
+      const grid = document.getElementById('qa-mgrid');
+      if (grid) grid.classList.toggle('hidden', !ui.qaMusclesOpen);
+      t.textContent = ui.qaMusclesOpen ? 'Hide muscle tags' : 'Tag muscle groups (optional)';
+      break;
+    }
     case 'cycle-muscle': {
       const m = t.dataset.m, cur = ui.customMuscles[m];
       const next = cur === undefined ? 'primary' : cur === 'primary' ? 'secondary' : undefined;

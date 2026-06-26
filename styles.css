@@ -285,7 +285,11 @@ body {
 .checkrow input { width: 18px; height: 18px; accent-color: var(--accent); }
 
 /* session entry: description + inline editor */
-.sess-desc { color: var(--dim); font-size: 12.5px; margin-top: 3px; line-height: 1.4; }
+.sess-desc { color: var(--dim); font-size: 12.5px; margin-top: 3px; line-height: 1.45; white-space: pre-line; }
+.hidden { display: none !important; }
+.field textarea, .ta { width: 100%; background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; color: var(--fg); padding: 13px; font: inherit; font-size: 16px; line-height: 1.5; resize: vertical; min-height: 110px; }
+.follow-steps { text-align: left; max-width: 380px; margin: 14px auto 0; }
+.follow-steps li { font-size: 15px; line-height: 1.55; margin-bottom: 8px; color: var(--soft); }
 .sess-row.editing { display: block; padding: 12px 0; }
 .entry-editor { display: flex; flex-direction: column; gap: 12px; }
 .entry-editor .sess-name { font-size: 15px; }
