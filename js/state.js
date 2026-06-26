@@ -14,6 +14,7 @@ const state = {
   logs: [],
   customExercises: [],
   programs: [],
+  theme: 'light',
   ready: false,
 };
 
@@ -30,8 +31,17 @@ export async function init() {
   if (state.activeId && !state.profiles.find(p => p.id === state.activeId)) state.activeId = null;
   if (!state.activeId && state.profiles.length) state.activeId = state.profiles[0].id;
   state.customExercises = await db.getAll('customExercises');
+  state.theme = await db.getMeta('theme', 'light');
+  document.documentElement.dataset.theme = state.theme;
   await loadHistory();
   state.ready = true;
+  emit();
+}
+
+export async function setTheme(t) {
+  state.theme = t;
+  document.documentElement.dataset.theme = t;
+  await db.setMeta('theme', t);
   emit();
 }
 
@@ -51,8 +61,8 @@ export async function addCustomExercise(ex) {
   return record;
 }
 
-export async function saveProgram(name, exercises) {
-  const record = { id: db.uid(), profileId: state.activeId, name, exercises, createdAt: new Date().toISOString() };
+export async function saveProgram(name, exercises, category = 'gym') {
+  const record = { id: db.uid(), profileId: state.activeId, name, exercises, category, createdAt: new Date().toISOString() };
   await db.put('programs', record);
   state.programs.push(record);
   emit();

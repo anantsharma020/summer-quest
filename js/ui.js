@@ -16,7 +16,7 @@ import {
   gymSessionXp, gymSessionMinutes, dayKey, QUEST_XP,
 } from './engine.js';
 import { bodyMap, muscleHighlight, demoSVG } from './ui-svg.js';
-import { exerciseMedia } from './media.js';
+import { exerciseMedia, hasPhoto } from './media.js';
 import { HOWTO } from './howto.js';
 
 // Merged gym catalog (built-in + user custom) and a name resolver.
@@ -41,8 +41,17 @@ const ui = {
   session: [], sessionName: '', gymEffort: 'hard', customUnit: 'reps',
   customMuscles: {}, addMode: 'list', qaMusclesOpen: false,
   editingIndex: null, editEffort: 'hard', loadedProgramId: null,
+  logDate: dayKey(), follow: null,
   backupView: null, backupText: '',
 };
+
+// Build a createdAt ISO timestamp for a chosen log date (noon local on past
+// days so timezone never shifts it across midnight; "now" for today).
+function dateToCreatedAt(d) {
+  return (!d || d === dayKey()) ? new Date().toISOString() : new Date(d + 'T12:00:00').toISOString();
+}
+const dateField = () =>
+  `<label class="field"><span>Date</span><input id="log-date" type="date" max="${dayKey()}" value="${ui.logDate}"></label>`;
 
 // Build a free / typed-in session entry (custom move or mobility step). No
 // catalog needed; muscles are optional (empty = mobility/recovery).
@@ -69,6 +78,88 @@ function buildEntry(gx, weight, sets, amt, effort) {
 }
 const gymEntryMeta = (e) =>
   `${e.sets}×${e.unit === 'seconds' ? e.seconds + 's' : e.reps}${e.weight ? ` · ${e.weight}kg` : ''} · ${effortById(e.effort).label}`;
+
+// Tracks the last log type we initialised, so we set a sensible default
+// add-mode once on tab entry (mobility → type-your-own) without overriding the
+// user's toggle on subsequent renders.
+let logInitType = null;
+
+// ---- session logging + guided follow-along --------------------------------
+let followTimer = null;
+
+function logSession(entries, name, category, date) {
+  const norm = entries.map(e => ({ ...e, xp: gymEntryXp(e) }));
+  const xp = gymSessionXp(norm);
+  const anyMuscle = norm.some(e => Object.keys(e.muscles || {}).length);
+  const icon = category === 'mobility' ? '🧘' : (anyMuscle ? '🏋️' : '🧘');
+  return S.addLog({
+    kind: 'gym', subtype: 'session', name, entries: norm, xp,
+    minutes: gymSessionMinutes(norm), icon, label: name, metric: null,
+    createdAt: dateToCreatedAt(date), date,
+  }).then(() => celebrate(xp, dayRating(xpForDay(S.get().quests, S.get().logs, dayKey()))));
+}
+
+function startFollow(entries, name, category) {
+  stopTimer();
+  ui.follow = { name, category, entries: entries.map(e => ({ ...e })), index: 0, remaining: null, running: false };
+  location.hash = '#/follow';
+}
+
+function stopTimer() { if (followTimer) { clearInterval(followTimer); followTimer = null; } if (ui.follow) ui.follow.running = false; }
+
+function toggleTimer() {
+  const f = ui.follow; if (!f) return;
+  if (followTimer) { stopTimer(); render(); return; }
+  const e = f.entries[f.index];
+  if (f.remaining == null) f.remaining = e.seconds || 30;
+  f.running = true;
+  followTimer = setInterval(() => {
+    f.remaining--;
+    const el = document.getElementById('follow-timer-num');
+    if (el) el.textContent = f.remaining;
+    if (f.remaining <= 0) { stopTimer(); f.remaining = null; render(); }
+  }, 1000);
+  render();
+}
+
+function followMedia(e) {
+  if (e.ref && hasPhoto(e.ref)) return exerciseMedia({ id: e.ref, pattern: 'squat', name: e.name });
+  const isMob = !(e.muscles && Object.keys(e.muscles).length);
+  return `<div class="follow-noicon">${isMob ? '🧘' : '💪'}</div>`;
+}
+
+function screenFollow() {
+  const f = ui.follow;
+  if (!f || !f.entries.length) { setTimeout(() => location.hash = '#/home', 0); return '<div class="empty">No routine loaded.</div>'; }
+  const e = f.entries[f.index];
+  const n = f.entries.length;
+  const isLast = f.index === n - 1;
+  const targetStr = e.unit === 'seconds'
+    ? `${e.sets} × ${e.seconds}s hold`
+    : `${e.sets} sets × ${e.reps} reps${e.weight ? ` · ${e.weight}kg` : ''}`;
+  return `
+  <header class="topbar"><button class="back" data-action="follow-exit">✕</button><div class="pname">${esc(f.name)}</div></header>
+  <div class="follow-progress"><div class="follow-bar" style="width:${(f.index) / n * 100}%"></div></div>
+  <div class="follow-step">Step ${f.index + 1} of ${n}</div>
+
+  <div class="card follow-card">
+    <div class="follow-media">${followMedia(e)}</div>
+    <div class="follow-name">${esc(e.name)}</div>
+    <div class="follow-target">${targetStr}</div>
+    ${Object.keys(e.muscles || {}).length ? `<div class="chips center">${muscleChips(e.muscles)}</div>` : ''}
+    ${e.desc ? `<div class="follow-desc">${esc(e.desc)}</div>` : ''}
+    ${e.unit === 'seconds' ? `
+      <div class="follow-timer"><span id="follow-timer-num">${f.remaining != null ? f.remaining : e.seconds}</span><small>sec</small></div>
+      <button class="btn-ghost" data-action="follow-timer">${f.running ? '⏸ Pause' : '▶ Start hold'}</button>` : ''}
+  </div>
+
+  <div class="quest-actions follow-nav">
+    <button class="btn-ghost" data-action="follow-prev" ${f.index === 0 ? 'disabled' : ''}>← Prev</button>
+    ${isLast
+      ? `<button class="btn-primary big" data-action="follow-finish">✓ Finish &amp; log</button>`
+      : `<button class="btn-primary big" data-action="follow-next">Done — Next →</button>`}
+  </div>`;
+}
 
 // Quick-log shortcuts shown on the home screen (short labels for the grid).
 const QUICK_LOG = [
@@ -223,6 +314,12 @@ function screenHome() {
     <button class="btn-primary big" data-action="generate">⚡ Generate Quest</button>
   </div>`}
 
+  <div class="section-title">Start a routine</div>
+  <div class="prog-chips">
+    ${STARTER_PROGRAMS.map(p => `<button class="prog-chip preset" data-action="follow-program" data-id="${p.id}">▶ ${esc(p.name)}</button>`).join('')}
+    ${S.get().programs.map(p => `<button class="prog-chip" data-action="follow-program" data-id="${p.id}">▶ ${esc(p.name)} <span>${(p.category === 'mobility') ? '🧘' : '🏋️'}</span></button>`).join('')}
+  </div>
+
   <div class="section-title">Quick log</div>
   <div class="quick-log">
     ${QUICK_LOG.map(q => `<a class="ql" href="#/log?type=${q.type}"><span class="ql-icon">${q.icon}</span>${q.label}</a>`).join('')}
@@ -324,21 +421,24 @@ function quickAddForm() {
     <button class="btn-primary big" data-action="add-free">＋ Add to session</button>`;
 }
 
-function screenGym(typeTabs) {
-  const programs = S.get().programs;
+function screenGym(typeTabs, category = 'gym') {
+  const isMob = category === 'mobility';
+  const programs = S.get().programs.filter(p => (p.category || 'gym') === category);
   const entries = ui.session;
   const total = gymSessionXp(entries);
   return `
-  <header class="topbar"><a class="back" href="#/home">←</a><div class="pname">Gym Session</div></header>
+  <header class="topbar"><a class="back" href="#/home">←</a><div class="pname">${isMob ? 'Mobility Routine' : 'Gym Session'}</div></header>
   <div class="logtabs">${typeTabs}</div>
 
-  <div class="section-title">Starter programs</div>
-  <div class="prog-chips">${STARTER_PROGRAMS.map(p => `<button class="prog-chip preset" data-action="load-preset" data-id="${p.id}">⭐ ${esc(p.name)} <span>${p.exercises.length}</span></button>`).join('')}</div>
+  ${isMob ? '' : `<div class="section-title">Starter programs</div>
+  <div class="prog-chips">${STARTER_PROGRAMS.map(p => `<button class="prog-chip preset" data-action="load-preset" data-id="${p.id}">⭐ ${esc(p.name)} <span>${p.exercises.length}</span></button>`).join('')}</div>`}
 
-  ${programs.length ? `<div class="section-title">Your programs</div>
+  ${programs.length ? `<div class="section-title">Your ${isMob ? 'mobility routines' : 'programs'}</div>
     <div class="prog-chips">${programs.map(p => `<button class="prog-chip" data-action="load-program" data-id="${p.id}">${esc(p.name)} <span>${p.exercises.length}</span></button>`).join('')}</div>` : ''}
 
-  <div class="section-title">${ui.sessionName ? esc(ui.sessionName) : 'Session'}${ui.loadedProgramId ? ' <span class="muted-note">· editing saved program</span>' : ''}</div>
+  ${isMob ? `<p class="muted-note" style="margin:8px 4px">Build a stretch / mobility flow by typing each step (name + how-to + reps/seconds). Save it, then start it from Home to follow along.</p>` : ''}
+
+  <div class="section-title">${ui.sessionName ? esc(ui.sessionName) : (isMob ? 'Routine' : 'Session')}${ui.loadedProgramId ? ' <span class="muted-note">· editing saved</span>' : ''}</div>
   <div class="card">
     ${entries.length ? entries.map((e, i) => ui.editingIndex === i ? entryEditor(e, i) : `
       <div class="sess-row">
@@ -378,13 +478,16 @@ function screenGym(typeTabs) {
     ` : quickAddForm()}
   </div>
 
-  ${entries.length ? `<div class="quest-actions">
+  ${entries.length ? `
+  <div class="card log-form" style="margin-top:14px">${dateField()}</div>
+  <div class="quest-actions">
+    <button class="btn-ghost" data-action="follow-session" data-cat="${category}">▶ Start &amp; follow along</button>
     ${ui.loadedProgramId
       ? `<button class="btn-ghost" data-action="update-program">★ Update “${esc(ui.sessionName)}”</button>`
-      : `<button class="btn-ghost" data-action="save-program">★ Save as program</button>`}
-    <button class="btn-primary big" data-action="log-session">Log session (+${total} XP)</button>
+      : `<button class="btn-ghost" data-action="save-program" data-cat="${category}">★ Save as ${isMob ? 'routine' : 'program'}</button>`}
+    <button class="btn-primary big" data-action="log-session" data-cat="${category}">Log it now (+${total} XP)</button>
   </div>
-  ${ui.loadedProgramId ? `<button class="link-btn" data-action="save-program">…or save as a new program</button>` : ''}` : ''}`;
+  ${ui.loadedProgramId ? `<button class="link-btn" data-action="save-program" data-cat="${category}">…or save as a new ${isMob ? 'routine' : 'program'}</button>` : ''}` : ''}`;
 }
 
 // Inline editor for one session entry (edit weight / sets / reps / effort).
@@ -406,17 +509,24 @@ function entryEditor(e, i) {
 function screenLog() {
   const params = new URLSearchParams((location.hash.split('?')[1] || ''));
   if (params.get('type')) ui.logType = params.get('type');
+  if (ui.logType !== logInitType) {
+    logInitType = ui.logType;
+    ui.addMode = ui.logType === 'mobility' ? 'custom' : 'list';
+    ui.editingIndex = null;
+  }
   const type = ui.logType;
   const isSport = type === 'sport';
   const isGym = type === 'gym';
-  const def = (isSport || isGym) ? null : ACTIVITY_TYPES[type];
+  const isMobility = type === 'mobility';
+  const def = (isSport || isGym || isMobility) ? null : ACTIVITY_TYPES[type];
 
   const typeTabs = LOG_TABS.map(t => {
     const m = logTabMeta(t);
     return `<button class="logtab ${type === t ? 'on' : ''}" data-action="set-log-type" data-type="${t}"><span>${m.icon}</span>${m.name}</button>`;
   }).join('');
 
-  if (isGym) return screenGym(typeTabs);
+  if (isGym) return screenGym(typeTabs, 'gym');
+  if (isMobility) return screenGym(typeTabs, 'mobility');
 
   let fields = '';
   if (isSport) {
@@ -445,6 +555,7 @@ function screenLog() {
     <label class="field"><span>Duration (minutes)</span>
       <input id="log-minutes" type="number" min="1" step="1" value="30" data-live></label>
     ${distField}
+    ${dateField()}
     <div class="xp-preview">Earns <strong id="xp-preview">+20</strong> XP</div>
     <button class="btn-primary big" data-action="save-log">Save Activity</button>
   </div>`;
@@ -583,6 +694,14 @@ function screenProfile() {
   </div>
   ${profileForm(p, false)}
 
+  <div class="section-title">Appearance</div>
+  <div class="card">
+    <div class="seg">
+      <button class="seg-btn ${S.get().theme !== 'dark' ? 'on' : ''}" data-action="set-theme" data-theme="light">☀️ Light</button>
+      <button class="seg-btn ${S.get().theme === 'dark' ? 'on' : ''}" data-action="set-theme" data-theme="dark">🌙 Dark</button>
+    </div>
+  </div>
+
   <div class="section-title">Backup &amp; restore</div>
   <div class="card backup-card">
     <p class="muted-note">Your data is stored only on this device. Export a backup before reinstalling the app, or to move to another phone.</p>
@@ -630,8 +749,11 @@ export function render() {
 
   if (!s.profiles.length) { app().innerHTML = screenOnboarding(); nav().style.display = 'none'; window.scrollTo(0, 0); return; }
 
+  if (!r.startsWith('/follow')) stopTimer();
+
   let html;
   if (r.startsWith('/quest')) html = screenQuest();
+  else if (r.startsWith('/follow')) html = screenFollow();
   else if (r.startsWith('/log')) html = screenLog();
   else if (r.startsWith('/stats')) html = screenStats();
   else if (r.startsWith('/library')) html = screenLibrary();
@@ -728,7 +850,13 @@ async function onClick(e) {
       location.hash = '#/home';
       break;
     }
-    case 'set-log-type': ui.logType = t.dataset.type; render(); break;
+    case 'set-log-type':
+      ui.logType = t.dataset.type;
+      if (t.dataset.type === 'mobility') ui.addMode = 'custom';
+      else if (t.dataset.type === 'gym') ui.addMode = 'list';
+      ui.editingIndex = null;
+      render();
+      break;
 
     case 'save-log': await saveLog(); break;
 
@@ -819,11 +947,12 @@ async function onClick(e) {
     }
     case 'save-program': {
       if (!ui.session.length) break;
-      const name = (prompt('Name this program', ui.sessionName || 'My Program') || '').trim();
+      const cat = t.dataset.cat || 'gym';
+      const name = (prompt('Name this ' + (cat === 'mobility' ? 'routine' : 'program'), ui.sessionName || 'My Program') || '').trim();
       if (!name) break;
-      const rec = await S.saveProgram(name, ui.session.map(e => ({ ...e })));
+      const rec = await S.saveProgram(name, ui.session.map(e => ({ ...e })), cat);
       ui.sessionName = name; ui.loadedProgramId = rec.id;
-      toast('Program saved');
+      toast('Saved');
       render();
       break;
     }
@@ -836,21 +965,47 @@ async function onClick(e) {
     }
     case 'log-session': {
       if (!ui.session.length) break;
-      const name = ui.sessionName || 'Session';
-      const entries = ui.session.map(e => ({ ...e, xp: gymEntryXp(e) }));
-      const xp = gymSessionXp(entries);
-      const anyMuscle = entries.some(e => Object.keys(e.muscles || {}).length);
-      await S.addLog({ kind: 'gym', subtype: 'session', name, entries, xp, minutes: gymSessionMinutes(entries), icon: anyMuscle ? '🏋️' : '🧘', label: name, metric: null });
-      ui.session = []; ui.sessionName = ''; ui.loadedProgramId = null; ui.editingIndex = null;
-      celebrate(xp, dayRating(xpForDay(S.get().quests, S.get().logs, dayKey())));
+      const cat = t.dataset.cat || 'gym';
+      await logSession(ui.session, ui.sessionName || (cat === 'mobility' ? 'Mobility routine' : 'Session'), cat, ui.logDate);
+      ui.session = []; ui.sessionName = ''; ui.loadedProgramId = null; ui.editingIndex = null; ui.logDate = dayKey();
       location.hash = '#/home';
       break;
     }
+    case 'follow-session': {
+      if (!ui.session.length) break;
+      startFollow(ui.session, ui.sessionName || 'Routine', t.dataset.cat || 'gym');
+      break;
+    }
+    case 'follow-program': {
+      const all = [...STARTER_PROGRAMS.map(p => ({ ...p, _preset: true })), ...S.get().programs];
+      const p = all.find(x => x.id === t.dataset.id);
+      if (!p) break;
+      const entries = p.exercises.map(e => {
+        if (e.ref) { const gx = gymExerciseById(e.ref); if (gx) return buildEntry(gx, e.weight, e.sets, e.reps ?? e.seconds, e.effort); }
+        return { ...e };
+      });
+      startFollow(entries, p.name, p.category || 'gym');
+      break;
+    }
+    case 'follow-next': if (ui.follow && ui.follow.index < ui.follow.entries.length - 1) { ui.follow.index++; ui.follow.remaining = null; stopTimer(); render(); } break;
+    case 'follow-prev': if (ui.follow && ui.follow.index > 0) { ui.follow.index--; ui.follow.remaining = null; stopTimer(); render(); } break;
+    case 'follow-timer': toggleTimer(); break;
+    case 'follow-finish': {
+      const f = ui.follow;
+      stopTimer();
+      await logSession(f.entries, f.name, f.category, dayKey());
+      ui.follow = null; ui.session = []; ui.sessionName = ''; ui.loadedProgramId = null;
+      location.hash = '#/home';
+      break;
+    }
+    case 'follow-exit': stopTimer(); ui.follow = null; location.hash = ui.session.length ? '#/log?type=gym' : '#/home'; break;
 
     case 'switch-profile': if (t.dataset.id !== S.get().activeId) await S.setActive(t.dataset.id); location.hash = '#/home'; break;
     case 'new-profile': ui.creatingProfile = true; render(); break;
     case 'create-profile': await saveProfile(true); break;
     case 'update-profile': await saveProfile(false); break;
+    case 'set-theme': await S.setTheme(t.dataset.theme); break;
+
     case 'backup-export':
       ui.backupText = JSON.stringify(await S.exportData());
       ui.backupView = 'export';
@@ -909,8 +1064,11 @@ async function saveLog() {
     const distance = distEl && distEl.value ? parseFloat(distEl.value) : null;
     log = { kind: def.kind, subtype: type, intensity, minutes: mins, xp: activityXp(def.kind, type, intensity, mins), label: def.name, icon: def.icon, metric: def.metric, distance };
   }
+  log.createdAt = dateToCreatedAt(ui.logDate);
+  log.date = ui.logDate;
   await S.addLog(log);
-  toast(`Logged ${log.label} · +${log.xp} XP`);
+  toast(`Logged ${log.label}${ui.logDate !== dayKey() ? ' (' + ui.logDate + ')' : ''} · +${log.xp} XP`);
+  ui.logDate = dayKey();
   location.hash = '#/home';
 }
 
@@ -935,6 +1093,7 @@ export function bindEvents() {
   document.addEventListener('click', onClick);
   document.addEventListener('input', (e) => {
     if (e.target.closest('[data-live]') && route().startsWith('/log')) updateLogPreview();
+    if (e.target.id === 'log-date') ui.logDate = e.target.value || dayKey();
     if (e.target.classList.contains('pf-equip')) e.target.closest('.equip')?.classList.toggle('on', e.target.checked);
   });
   window.addEventListener('hashchange', () => { ui.creatingProfile = false; ui.backupView = null; ui.editingIndex = null; render(); });

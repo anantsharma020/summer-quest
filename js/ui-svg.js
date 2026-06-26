@@ -23,7 +23,7 @@ function highlightColor(w) {
   if (w >= 0.25) return '#ff9f40';
   return null; // inactive -> base
 }
-const BASE = '#2b3a52';
+const BASE = 'var(--muscle-base)';
 
 // --- muscle region geometry -------------------------------------------------
 // Each muscle maps to one or more shapes on the front (fx) or back (bx) figure.
